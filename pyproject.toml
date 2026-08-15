@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qxen-cd"
+version = "0.1.0"
+description = "Auditable evidence capsules and rolling-context compaction for agent systems"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {file = "LICENSE"}
+authors = [{name = "QXEN-CD contributors"}]
+dependencies = []
+
+[project.optional-dependencies]
+schema = ["jsonschema>=4.20"]
+mcp = ["mcp>=1.0"]
+
+[tool.setuptools.packages.find]
+include = ["qxen_cd*"]
+
+[tool.pytest.ini_options]
+pythonpath = [".", "integrations/codex", "integrations/local-qwen"]
+
+testpaths = ["tests"]

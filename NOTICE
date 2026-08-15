@@ -1,0 +1,8 @@
+QXEN-CD
+
+Copyright 2026 QXEN-CD contributors.
+
+The repository contains deterministic evidence-processing infrastructure.
+Model weights, training data, private project materials, API credentials,
+and host-specific Codex/LocalQwen configuration are not included and are
+licensed separately when applicable.

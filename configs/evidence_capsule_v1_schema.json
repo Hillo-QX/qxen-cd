@@ -1,0 +1,165 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "configs/evidence_capsule_v1_schema.json",
+  "title": "QXEN-CD Evidence Capsule v1",
+  "description": "证据胶囊契约 JSON Schema（T001 产物）。外层固定结构，内层自然语言自由表达。",
+  "type": "object",
+  "required": [
+    "capsule_id",
+    "source_type",
+    "relevance",
+    "key_evidence",
+    "sufficiency"
+  ],
+  "properties": {
+    "capsule_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_type": {
+      "type": "string",
+      "enum": [
+        "data_file",
+        "config",
+        "report",
+        "code",
+        "model_weights",
+        "log",
+        "doc",
+        "env_check",
+        "other"
+      ]
+    },
+    "relevance": {
+      "type": "string",
+      "enum": ["low", "medium", "high"]
+    },
+    "key_evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["text", "source"],
+        "properties": {
+          "text": { "type": "string", "minLength": 1 },
+          "source": { "type": "string", "minLength": 1 },
+          "preserve_verbatim": { "type": "boolean", "default": false }
+        }
+      }
+    },
+    "timeline": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "relations": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "conflicts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["a", "b"],
+        "properties": {
+          "a": { "type": "string", "minLength": 1 },
+          "b": { "type": "string", "minLength": 1 },
+          "note": { "type": "string" }
+        }
+      }
+    },
+    "uncertainty": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "immutable_fields": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "compressible": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "sufficiency": {
+      "type": "string",
+      "enum": ["insufficient", "sufficient"]
+    },
+    "next_step": {
+      "type": "string"
+    },
+    "evidence_links": {
+      "type": "array",
+      "description": "可选。证据对关键判断点的定向支撑关系。evidence_refs 必须引用 key_evidence 中的 source 值；禁止与 conflicts 重复表达同一互斥对；与目标无关的证据不建 link（由 relevance 字段承载）。",
+      "items": {
+        "type": "object",
+        "required": ["target", "evidence_refs", "support"],
+        "properties": {
+          "target": { "type": "string", "minLength": 1 },
+          "evidence_refs": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "support": {
+            "type": "string",
+            "enum": ["supports", "contradicts", "partial", "insufficient"]
+          },
+          "note": { "type": "string" }
+        }
+      }
+    },
+    "reference": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "task_type": {
+      "type": "string",
+      "enum": ["capsule", "state_patch"],
+      "description": "可选。训练分流标签（skill §4.1）。"
+    },
+    "anchor_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "可选。锚点标识（生成器溯源用）。"
+    },
+    "data_source": {
+      "type": "string",
+      "description": "可选。数据来源分类（existing_manual/external_real/trajectory_real/r1x_real/derived/manual）。"
+    },
+    "event_date": {
+      "type": "string",
+      "description": "可选。事件日期（ISO8601 或可读日期）。"
+    },
+    "provenance": {
+      "type": "string",
+      "description": "可选。溯源标记。"
+    },
+    "operative_status": {
+      "type": "string",
+      "description": "可选。CURRENT/SUPERSEDED/STALE 等状态（Gate 维度）。"
+    },
+    "authority": {
+      "type": "string",
+      "description": "可选。权威等级（如 T1/T2，Gate 维度）。"
+    },
+    "evidence_observed_at": {
+      "type": "string",
+      "description": "可选。证据观测时间（ISO8601）。"
+    },
+    "materiality_label_original": {
+      "type": "string",
+      "description": "可选。原始重要性标注。"
+    },
+    "source_sha256": {
+      "type": "string",
+      "description": "可选。来源哈希（防篡改校验）。"
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "model": { "type": "string" },
+        "contract_version": { "type": "string" },
+        "created_at": { "type": "string" },
+        "as_of": { "type": ["string", "null"] }
+      }
+    }
+  },
+  "additionalProperties": false
+}

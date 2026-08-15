@@ -1,0 +1,30 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+.env
+.env.*
+! .env.example
+dist/
+build/
+*.egg-info/
+runtime/
+models/
+logs/
+data/
+outputs/
+# Never commit local model weights, private datasets, or runtime state.
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.gguf
+*.ckpt
+
+# Keep the public boundary policies while excluding all actual datasets.
+!data/
+data/*
+!data/README.md
+!models/
+models/*
+!models/README.md

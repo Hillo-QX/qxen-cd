@@ -1,0 +1,15 @@
+Creative Commons Attribution 4.0 International (CC BY 4.0)
+
+The synthetic example materials in this repository marked CC BY 4.0 are
+licensed under the canonical Creative Commons Attribution 4.0 International
+license. The full legal code is available at:
+
+https://creativecommons.org/licenses/by/4.0/legalcode
+
+Human-readable summary:
+https://creativecommons.org/licenses/by/4.0/
+
+Attribution must include the title or file name, the attribution statement,
+the license name and link, and an indication of changes if the material is
+modified. This short file is a pointer to the canonical legal code and does
+not replace it.

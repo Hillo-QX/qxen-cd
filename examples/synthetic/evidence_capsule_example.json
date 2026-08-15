@@ -1,0 +1,20 @@
+{
+  "capsule_id": "EC-SYNTHETIC-001",
+  "source_type": "report",
+  "relevance": "high",
+  "key_evidence": [
+    {
+      "text": "Synthetic example: the current configuration was published on 2026-08-16.",
+      "source": "synthetic/report-001.txt",
+      "preserve_verbatim": true
+    }
+  ],
+  "timeline": ["Publication: 2026-08-16"],
+  "relations": ["The report describes the synthetic configuration."],
+  "conflicts": [],
+  "uncertainty": [],
+  "immutable_fields": ["publication date"],
+  "compressible": ["background description"],
+  "sufficiency": "sufficient",
+  "next_step": "main-agent review"
+}
