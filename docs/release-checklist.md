@@ -5,6 +5,7 @@
 - Deterministic Guard/Fallback core
 - Rolling-context compactor
 - Minimal paired-usage audit writer
+- Pipeline-aware audit accounting with fallback replay and capsule-use tracking
 - Evidence Capsule v1 schema and contract
 - Optional MCP adapter with no model loading
 - Offline tests and provider/security documentation
