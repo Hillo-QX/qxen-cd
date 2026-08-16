@@ -17,7 +17,6 @@ authorization policy, domain validation, and final-agent review.
 - Capsule generation and capsule usage are reported separately; unused
   capsules are not presented as confirmed context savings.
 - Added public tests covering pipeline separation and confirmed capsule use.
-
 # 0.2.0 — P0/P1 capsule reliability and client integration
 
 - Add deterministic capsule leases, atomic claims, stale-worker rejection, and
