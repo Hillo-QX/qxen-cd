@@ -17,3 +17,12 @@ authorization policy, domain validation, and final-agent review.
 - Capsule generation and capsule usage are reported separately; unused
   capsules are not presented as confirmed context savings.
 - Added public tests covering pipeline separation and confirmed capsule use.
+# 0.2.0 — P0/P1 capsule reliability and client integration
+
+- Add deterministic capsule leases, atomic claims, stale-worker rejection, and
+  idempotent completion in `qxen_cd.capsule_state`.
+- Add active-turn context pressure estimation and same-session P1 surfacing
+  rules with freshness and relevance guards.
+- Add concurrency, lease-recovery, idempotency, pressure, and isolation tests.
+- Document the host integration boundary: QXEN remains advisory; Guard and the
+  main agent retain final authority.
