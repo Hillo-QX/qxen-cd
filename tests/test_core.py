@@ -32,6 +32,13 @@ def test_accepts_page_citation_suffix_without_widening_source():
     assert result["source_match"] == "page_suffix_canonicalized"
 
 
+def test_similar_source_is_review_only():
+    result = guard_v1(capsule("report/a-final.txt"), PROMPT)
+    assert result["guard_status"] == "FALLBACK"
+    assert result["fallback_reason"] == "source_similarity_candidate"
+    assert result["source_match"] == "similarity_candidate"
+
+
 def test_missing_source_manifest_falls_back_before_acceptance():
     result = guard_v1(capsule(), "证据材料 BEGIN\n证据材料 END")
     assert result["guard_status"] == "FALLBACK"

@@ -10,6 +10,7 @@ import json
 import re
 import unicodedata
 from copy import deepcopy
+from difflib import SequenceMatcher
 from typing import Any
 
 ALLOWED_STATUS = {"CURRENT", "STALE", "SUPERSEDED"}
@@ -86,6 +87,17 @@ def match_source(candidate: str, allowed_sources: list[str]) -> tuple[str | None
     return (canonical, "page_suffix_canonicalized") if canonical else (None, "unmatched")
 
 
+def source_similarity_candidates(candidate: str, allowed_sources: list[str], limit: int = 3) -> list[dict[str, Any]]:
+    """Return review-only candidates; never used to accept a capsule."""
+    candidate_key = source_key(candidate)
+    ranked = sorted(
+        ((SequenceMatcher(None, candidate_key, source_key(value)).ratio(), value)
+         for value in allowed_sources), reverse=True,
+    )
+    return [{"source": value, "similarity": round(score, 4)}
+            for score, value in ranked[:limit] if score >= 0.72]
+
+
 def safe_fallback(raw: str, prompt: str, reason: str) -> dict[str, Any]:
     sources = _source_lines(prompt)
     capsule = {
@@ -156,7 +168,15 @@ def guard_v1(raw: str, prompt: str) -> dict[str, Any]:
             return safe_fallback(raw, prompt, "key_evidence_source_missing_or_invalid")
         canonical, match_type = match_source(candidate, allowed_sources)
         if canonical is None:
-            return safe_fallback(raw, prompt, "source_not_in_evidence_material")
+            result = safe_fallback(raw, prompt, "source_not_in_evidence_material")
+            candidates = source_similarity_candidates(candidate, allowed_sources)
+            if candidates:
+                result["fallback_reason"] = "source_similarity_candidate"
+                result["source_match"] = "similarity_candidate"
+                result["source_candidates"] = candidates
+                result["gpt_context"]["fallback_reason"] = result["fallback_reason"]
+                result["gpt_context"]["source_candidates"] = candidates
+            return result
         if candidate != canonical:
             fixed["key_evidence"][index]["source"] = canonical
             canonicalized += 1
