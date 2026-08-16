@@ -32,3 +32,23 @@ auditable bounded state and keeps rejected outputs in `pending_gpt_review`.
 
 The MCP adapter is optional. The deterministic Python functions are the stable
 integration boundary and can be embedded in a non-MCP host.
+
+## P0/P1 capsule lifecycle
+
+Long or reusable host responses may be placed in a `PENDING_QXEN` capsule. The
+host claims it atomically and receives a unique lease token:
+
+```text
+PENDING_QXEN -> RUNNING_QXEN -> COMPLETED
+                         \\-> PENDING_QXEN -> FAILED
+```
+
+Claims use an exclusive file lock, an atomic replace, and a bounded lease. A
+stale `RUNNING_QXEN` capsule is recovered on the next claim; a late worker
+cannot complete it because its token no longer matches. Repeated completion is
+idempotent. This is deterministic host state, not a model decision.
+
+P1 surfacing uses the latest active-turn prompt usage rather than cumulative
+session totals. A pending capsule is surfaced only for the same session and a
+strong task/keyword relation; pressure-based surfacing additionally requires a
+fresh capsule and a weak keyword relation. Unrelated tasks remain isolated.
