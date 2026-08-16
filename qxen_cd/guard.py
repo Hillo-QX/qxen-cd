@@ -63,6 +63,29 @@ def source_key(value: str) -> str:
     return re.sub(r"\s+", "", value)
 
 
+def source_base_key(value: str) -> str:
+    """Remove only explicit page-citation suffixes from a source name."""
+    normalized = unicodedata.normalize("NFKC", str(value)).strip()
+    normalized = re.sub(r"\s*[（(]\s*\d+\s*页\s*[）)]\s*", " ", normalized,
+                        flags=re.IGNORECASE)
+    normalized = re.sub(r"\s*(?:第\s*)?\d+(?:\s*[-–—]\s*\d+)?\s*页\s*$",
+                        "", normalized, flags=re.IGNORECASE)
+    normalized = re.sub(r"\s*(?:pages?|页码)\s*[:：]\s*.*$", "", normalized,
+                        flags=re.IGNORECASE)
+    normalized = re.sub(r"\s*[:：]\s*$", "", normalized)
+    return source_key(normalized)
+
+
+def match_source(candidate: str, allowed_sources: list[str]) -> tuple[str | None, str]:
+    exact = {source_key(value): value for value in allowed_sources}
+    canonical = exact.get(source_key(candidate))
+    if canonical is not None:
+        return canonical, "exact" if candidate == canonical else "canonicalized"
+    by_base = {source_base_key(value): value for value in allowed_sources}
+    canonical = by_base.get(source_base_key(candidate))
+    return (canonical, "page_suffix_canonicalized") if canonical else (None, "unmatched")
+
+
 def safe_fallback(raw: str, prompt: str, reason: str) -> dict[str, Any]:
     sources = _source_lines(prompt)
     capsule = {
@@ -77,6 +100,7 @@ def safe_fallback(raw: str, prompt: str, reason: str) -> dict[str, Any]:
     return {
         "guard_status": "FALLBACK",
         "fallback_reason": reason,
+        "source_match": "unavailable",
         "capsule": capsule,
         "gpt_context": {
             "context_mode": "GPT_REVIEW",
@@ -118,27 +142,35 @@ def guard_v1(raw: str, prompt: str) -> dict[str, Any]:
     if capsule.get("sufficiency") not in ALLOWED_SUFFICIENCY:
         return safe_fallback(raw, prompt, "illegal_sufficiency:" + str(capsule.get("sufficiency")))
 
-    allowed = {source_key(value): value for value in _source_lines(prompt)}
+    allowed_sources = _source_lines(prompt)
+    if not allowed_sources:
+        return safe_fallback(raw, prompt, "evidence_material_missing")
     fixed = deepcopy(capsule)
     canonicalized = 0
+    match_types = set()
     for index, item in enumerate(evidence):
         if not isinstance(item, dict) or not isinstance(item.get("text"), str):
             return safe_fallback(raw, prompt, "key_evidence_item_invalid")
         candidate = item.get("source")
         if not isinstance(candidate, str):
             return safe_fallback(raw, prompt, "key_evidence_source_missing_or_invalid")
-        canonical = allowed.get(source_key(candidate))
+        canonical, match_type = match_source(candidate, allowed_sources)
         if canonical is None:
             return safe_fallback(raw, prompt, "source_not_in_evidence_material")
         if candidate != canonical:
             fixed["key_evidence"][index]["source"] = canonical
             canonicalized += 1
+        match_types.add(match_type)
 
     return {
         "guard_status": "ACCEPT",
         "capsule": fixed,
         "source_canonicalized": canonicalized,
+        "source_match": ("page_suffix_canonicalized" if "page_suffix_canonicalized" in match_types
+                          else "canonicalized" if "canonicalized" in match_types else "exact"),
         "preserve_original": True,
         "gpt_context": {"context_mode": "CAPSULE", "guard_status": "ACCEPT",
-                        "capsule": fixed, "source_canonicalized": canonicalized},
+                        "capsule": fixed, "source_canonicalized": canonicalized,
+                        "source_match": ("page_suffix_canonicalized" if "page_suffix_canonicalized" in match_types
+                                          else "canonicalized" if "canonicalized" in match_types else "exact")},
     }

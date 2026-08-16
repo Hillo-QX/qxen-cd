@@ -25,6 +25,19 @@ def test_accepts_and_canonicalizes_source_whitespace():
     assert result["source_canonicalized"] == 1
 
 
+def test_accepts_page_citation_suffix_without_widening_source():
+    result = guard_v1(capsule("report/a.txt（61 页）：第 1-10 页"), PROMPT)
+    assert result["guard_status"] == "ACCEPT"
+    assert result["capsule"]["key_evidence"][0]["source"] == "report/a.txt"
+    assert result["source_match"] == "page_suffix_canonicalized"
+
+
+def test_missing_source_manifest_falls_back_before_acceptance():
+    result = guard_v1(capsule(), "证据材料 BEGIN\n证据材料 END")
+    assert result["guard_status"] == "FALLBACK"
+    assert result["fallback_reason"] == "evidence_material_missing"
+
+
 def test_illegal_status_falls_back_with_raw_preserved():
     raw = capsule().replace('"sufficient"', '"sufficient"').replace(
         '"source_type": "report"', '"source_type": "report", "operative_status": "planned"')
