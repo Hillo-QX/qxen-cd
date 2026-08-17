@@ -15,7 +15,9 @@ agent remains responsible for final decisions.
 - `qxen_cd.guard`: JSON parsing, required fields, enum checks, source
   canonicalization, and complete raw-output fallback.
 - `qxen_cd.compact`: deterministic de-duplication, verbatim preservation,
-  pending-review isolation, and context budgets.
+  pending-review isolation, and context budgets. Long-text fallback records
+  are retained as pointer-only degraded capsules; high-risk fallbacks remain
+  pending host review.
 - `qxen_cd.audit`: paired baseline/QXEN usage observations without inventing
   savings when a baseline is missing.
 - `qxen_cd.mcp_server`: optional MCP adapter exposing the deterministic core.
