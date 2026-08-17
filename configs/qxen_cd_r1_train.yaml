@@ -1,0 +1,39 @@
+# QXEN-CD R1 — REL/IRREL 二分类 LoRA 训练配置
+# 依据: T055 R1 Base benchmark (acc 0.55, IRREL recall 0.3583, hard_negative 0.0648)
+#       Dataset Gate 20/20 PASS (TRAINING_ALLOWED=YES)
+# 超参: 沿用 ctxA T052 mixed 已验证的超参 (rank=8/ga=4/lr=1e-5/iters=500/layers=4/seq=512/batch=1)
+
+model: models/qwen3.5-9b-mlx-4bit
+
+data:
+  train: train.jsonl          # 2160 条 (REL 720 / IRREL 1440)，按 query_id 整组划分
+  valid: valid.jsonl          # 300 条 (REL 100 / IRREL 200)
+  test: test.jsonl            # 540 条 (REL 180 / IRREL 360)，门控评估专用，不参与调参
+  ground_truth: ground_truth.jsonl   # 3000 条 sidecar（含 subtype/rationale）
+  instruction: "决策：(REL|IRREL) 只输出一个标签词。"
+
+training:
+  adapter_path: outputs/lora_adapters_r1
+  resume_adapter_file: null          # R1 从 base 全新训练（与 ctxA 分域，不复用 ctxA adapter）
+  iters: 500
+  batch_size: 1
+  grad_accumulation_steps: 4
+  learning_rate: 1e-5
+  num_layers: 4
+  max_seq_length: 512
+  grad_checkpoint: true
+  save_every: 100
+  steps_per_report: 5
+  steps_per_eval: 100
+  val_batches: 0
+  seed: 0
+
+acceptance:                     # 对照 T055 base 基线的训练目标（门控在训练后另行评估）
+  baseline_accuracy: 0.55
+  baseline_rel_recall: 0.9333
+  baseline_irrel_recall: 0.3583
+  target_irrel_recall_gain: "显著提升 hard_negative / noise_negative 召回，维持 REL 召回"
+
+reports:
+  prep: reports/R1_train_prep.json
+  benchmark_base: reports/R1_base_benchmark.json

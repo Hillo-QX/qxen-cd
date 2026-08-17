@@ -1,0 +1,41 @@
+# R3A-hard v1 seq256：针对 T? Metal 分配停滞的一次有依据降内存修复。
+stage: R3A-hard-v1-seq256
+version: "1.0"
+skill_ref: "QXEN_R2_R7_LEGAL_ELEMENT_TRAINING_SKILL.md#8"
+target: "operative_status"
+
+model: models/qwen3.5-9b-mlx-4bit
+
+data:
+  dir: data/r3/staging/r3a_hard_v1
+  train_rows: 2160
+  valid_rows: 300
+
+adapter:
+  output: models/r3a_hard_v1_seq256
+  fine_tune_type: lora
+  num_layers: 4
+  rank: 8
+  scale: 20
+
+training:
+  batch_size: 1
+  epochs: 1
+  learning_rate: 4.0e-6
+  max_seq_length: 256
+  grad_checkpoint: true
+  grad_accumulation_steps: 4
+  seed: 42
+  iters: 2160
+  steps_per_report: 100
+  save_every: 100
+  val_batches: 50
+  steps_per_eval: 100
+  resume_adapter_file: null
+
+gate:
+  operative_status_accuracy: 0.90
+  superseded_rejection: 0.95
+  wrong_authority_preference_rate: 0.03
+  critical_t0_t1_miss: 0
+  invalid_output: 0

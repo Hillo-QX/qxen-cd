@@ -1,0 +1,113 @@
+{
+  "schema_version": "qxen_detection_tasks_v1",
+  "purpose": "定义 QXEN-CD 检测任务的输入、发现范围、确定性校验和升级边界",
+  "authority": {
+    "qxen_cd": "candidate_detection_only",
+    "deterministic_verifier": "exact_confirmation",
+    "gpt_main_agent": "final_interpretation_and_action"
+  },
+  "finding_status": ["CANDIDATE", "CONFIRMED_BY_RULE", "REJECTED_BY_RULE", "NEEDS_GPT_REVIEW"],
+  "severity": ["INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"],
+  "tasks": [
+    {
+      "id": "detect_long_file_integrity",
+      "name": "长文件完整性检测",
+      "input": ["源码", "日志", "回测报告", "文件路径"],
+      "qxen_scope": ["提取函数", "阈值", "数据源", "结论", "标记语义断裂和截断风险"],
+      "deterministic_checks": ["文件可读", "字节/行数", "截断标记", "来源位置可回溯"],
+      "escalate": ["结论与证据不一致", "关键段落缺失", "同一阈值多版本冲突"],
+      "forbidden": ["补写缺失内容", "把摘要当原文", "擅自修改文件"]
+    },
+    {
+      "id": "detect_legacy_residue",
+      "name": "旧规残留检测",
+      "input": ["源码", "配置", "schema", "sheet清单", "变更记录"],
+      "qxen_scope": ["旧函数", "旧字段", "旧阈值", "fallback", "重复计票", "废弃sheet"],
+      "deterministic_checks": ["文本/AST命中", "引用链", "配置键存在性", "重复定义计数"],
+      "escalate": ["旧规则仍被生产入口引用", "新旧阈值同时生效", "fallback绕过护栏"],
+      "forbidden": ["自动删除旧代码", "仅凭命名判断废弃", "忽略反向引用"]
+    },
+    {
+      "id": "detect_code_audit_screen",
+      "name": "代码审计初筛",
+      "input": ["源码", "diff", "调用图", "配置"],
+      "qxen_scope": ["逻辑冲突", "字段越权", "重复计算", "命名不一致", "异常路径"],
+      "deterministic_checks": ["语法", "类型", "静态规则", "diff覆盖", "入口/出口一致性"],
+      "escalate": ["安全边界变化", "最终状态被建议字段覆盖", "异常路径可绕过审计"],
+      "forbidden": ["把疑似问题标成已确认", "未经授权重构", "忽略测试缺口"]
+    },
+    {
+      "id": "detect_log_failure",
+      "name": "日志失败检测",
+      "input": ["pytest日志", "训练日志", "MCP日志", "退出码"],
+      "qxen_scope": ["失败模式聚类", "重复失败", "首次失败位置", "fallback原因"],
+      "deterministic_checks": ["test/expected/actual", "退出码", "时间顺序", "重试次数"],
+      "escalate": ["OOM", "数据污染", "模型/模板不一致", "连续修复失败"],
+      "forbidden": ["用摘要代替原始错误", "伪造通过", "把重试当新任务"]
+    },
+    {
+      "id": "detect_data_quality",
+      "name": "数据质量检测",
+      "input": ["CSV/JSONL/数据库导出", "schema", "时间字段", "版本字段"],
+      "qxen_scope": ["缺失模式", "重复模式", "日期断档解释", "字段覆盖风险", "异常跳变候选"],
+      "deterministic_checks": ["缺失率", "重复率", "日期间隔", "类型/枚举", "数值异常", "主键唯一性"],
+      "escalate": ["训练/评估泄漏", "时间穿越", "标签冲突", "真实与合成混杂"],
+      "forbidden": ["填补真实数据", "更改标签", "用模型判断替代统计计算"]
+    },
+    {
+      "id": "detect_backtest_consistency",
+      "name": "回测结果一致性检测",
+      "input": ["回测报告", "交易明细", "策略版本", "数据快照", "参数"],
+      "qxen_scope": ["版本差异整理", "指标来源关联", "异常结果解释候选"],
+      "deterministic_checks": ["收益/夏普/回撤/交易次数重算", "报告与明细对账", "参数与版本绑定", "PIT字段存在"],
+      "escalate": ["指标无法重算", "报告与明细不一致", "前视/幸存者偏差疑似", "数据快照缺失"],
+      "forbidden": ["修改收益数字", "补造交易记录", "把模型解释当作回测证明"]
+    },
+    {
+      "id": "detect_report_traceability",
+      "name": "报表可追溯性检测",
+      "input": ["Word/Markdown/HTML", "策略条件", "回测结果", "变更记录"],
+      "qxen_scope": ["章节大纲", "事实-来源映射", "缺证据段落", "互相矛盾表述"],
+      "deterministic_checks": ["路径存在", "数字引用", "版本/日期覆盖", "占位符扫描"],
+      "escalate": ["关键结论无来源", "结论超出数据支持", "版本混用"],
+      "forbidden": ["将草稿当正式报告", "补写未验证结论", "隐藏不确定性"]
+    },
+    {
+      "id": "detect_dashboard_consistency",
+      "name": "看板内容一致性检测",
+      "input": ["看板源码", "截图/导出", "字段字典", "状态枚举", "日期"],
+      "qxen_scope": ["语义残留", "状态名漂移", "标题/标签含义冲突"],
+      "deterministic_checks": ["精确字符串", "日期格式", "状态枚举", "链接/路径", "旧词命中"],
+      "escalate": ["展示状态与真实状态不一致", "旧文字影响决策", "指标口径不一致"],
+      "forbidden": ["只凭截图猜测数据", "自动替换生产文案", "忽略时间戳"]
+    },
+    {
+      "id": "detect_runtime_health",
+      "name": "日常运行健康检测",
+      "input": ["脚本日志", "进程表", "退出码", "网络检查", "路径/权限"],
+      "qxen_scope": ["网络失败", "数据缺失", "路径错误", "可恢复异常分类", "上下文影响"],
+      "deterministic_checks": ["进程存活", "退出码", "文件存在", "权限", "端点可达", "内存阈值"],
+      "escalate": ["OOM", "Metal争抢", "训练中并行推理", "连续失败", "checkpoint损坏"],
+      "forbidden": ["自动忽略危险告警", "训练期间加载LocalQwen", "删除日志或checkpoint"]
+    }
+  ],
+  "output_schema": {
+    "detection_id": "string",
+    "task_type": "string",
+    "target": "string",
+    "findings": [
+      {
+        "finding_id": "string",
+        "category": "string",
+        "severity": "INFO|LOW|MEDIUM|HIGH|CRITICAL",
+        "status": "CANDIDATE|CONFIRMED_BY_RULE|REJECTED_BY_RULE|NEEDS_GPT_REVIEW",
+        "claim": "string",
+        "evidence": [{"source": "string", "location": "string", "quote": "string"}],
+        "deterministic_check": "string",
+        "recommendation": "string"
+      }
+    ],
+    "coverage": {"checked": "integer", "skipped": "integer", "reasons": ["string"]},
+    "requires_gpt_review": "boolean"
+  }
+}

@@ -1,0 +1,20 @@
+# QXEN 最小训练配置 (T001 变体#53)
+# 与 train/configs/config.yaml 一致的规范命名版本, 供 load_data.py 使用
+model:
+  name: qwen3.5-9b-mlx-4bit
+  architecture: qwen3.5 (transformer decoder, 4bit MLX)
+  size: 9B
+  path: models/qwen3.5-9b-mlx-4bit
+  n_features: 4
+
+data:
+  train_path: data/real_samples.jsonl
+  valid_path: data/distill_ctxA/valid.jsonl
+  text_fields: [instruction, response]
+
+train:
+  batch_size: 8
+  learning_rate: 0.01
+  epochs: 1
+  seed: 42
+  framework: dependency-free SimpleRegressor (dry-run 验证用)

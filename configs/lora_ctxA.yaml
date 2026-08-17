@@ -1,0 +1,53 @@
+# lora_ctxA.yaml - T045 Phase A Context Decision Training（块级 PIN/DROP/KEEP/VERBATIM）
+#
+# 与 P1（outputs/lora_adapters_p1/train_config.yaml）唯一的实质差异：
+#   1) data: data/augB -> data/distill_ctxA_chat   （新 4 标签决策数据，唯一变量）
+#   2) adapter_path -> outputs/lora_adapters_ctxA  （独立目录纪律，互不覆盖）
+#   3) save_every 10 -> 50                         （550 iters = 11 个 checkpoint；
+#                                                   P1 的 55 个 checkpoint 无必要，非训练变量）
+# 超参严格沿用 T045 启动清单：rank=8 / grad_accum=4 / lr=1e-5 / iters=550；
+# 安全基线沿用两次内核 panic 后的 v2+ 收窄：num_layers=4 / seq=512 / batch=1 /
+# grad_checkpoint=true / clear_cache_threshold=1GB，禁止放宽。
+#
+# 启动前硬约束（T045 §八）：
+#   - `ollama ps` 必须为空（llama-server 驻留 7.5GB 曾触发内存保护）
+#   - 必须经 scripts/train_safe.sh 启动（自动拉起 memory_monitor.sh：
+#     wired>18GB / free<500MB 连续 3 次采样 => SIGTERM 训练进程）
+#   - Ollama 推理与 MLX 训练不得同时进行
+
+model: models/qwen3.5-9b-mlx-4bit
+train: true
+fine_tune_type: lora
+optimizer: adam
+optimizer_config:
+  adam: {}
+  adamw: {}
+  muon: {}
+  sgd: {}
+  adafactor: {}
+data: data/distill_ctxA_chat
+seed: 0
+num_layers: 4
+batch_size: 1
+iters: 550
+val_batches: 25
+learning_rate: 0.00001
+steps_per_report: 5
+steps_per_eval: 100
+resume_adapter_file: null
+adapter_path: outputs/lora_adapters_ctxA
+save_every: 50
+test: false
+test_batches: 500
+max_seq_length: 512
+grad_checkpoint: true
+grad_accumulation_steps: 4
+clear_cache_threshold: 1073741824
+lr_schedule: null
+lora_parameters:
+  rank: 8
+  dropout: 0.0
+  scale: 20.0
+mask_prompt: false
+report_to: null
+project_name: qxen-lora-safe

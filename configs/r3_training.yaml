@@ -1,0 +1,48 @@
+# configs/r3_training.yaml - QXEN R3 PHASE1 Authority/Operativeness LoRA 训练配置 (v1.0, 2026-08-13)
+#
+# 依据 QXEN_R2_R7_LEGAL_ELEMENT_TRAINING_SKILL.md §7 默认超参:
+#   rank=8, lr=3e-6~5e-6, epochs_first_run=1, 序列长度 R3 建议 512-768。
+# 24GB 内存守卫: wired>18GB 或 free<500MB -> 安全终止。
+# 数据: data/r3/ 3000 条 (train2160/valid300/fresh540, 8 任务族), sha256=75c282dd。
+
+stage: R3
+phase: 1
+version: "1.0"
+skill_ref: "QXEN_R2_R7_LEGAL_ELEMENT_TRAINING_SKILL.md#7"
+
+model: models/qwen3.5-9b-mlx-4bit
+
+data:
+  train_dir: data/r3/train
+  valid_dir: data/r3/valid
+  fresh_dir: data/r3/fresh
+  mlx_staging: data/r3/mlx          # mlx_lm lora 训练数据暂存目录（实际训练时由脚本生成）
+  expected_files: 24
+  train_rows: 2160
+  valid_rows: 300
+  fresh_rows: 540
+  dataset_sha256: "75c282dd019844e6e53261f741b80e93c94af030889c6baa84f360f916d6cb47"
+
+adapter:
+  output: models/r3
+  fine_tune_type: lora
+  num_layers: 4
+  rank: 8
+  scale: 20
+
+training:
+  batch_size: 1
+  epochs: 1
+  learning_rate: 4.0e-6            # 在 skill §7 [3e-6, 5e-6] 范围内
+  max_seq_length: 512              # 在 skill §7 R3 建议 512-768 范围内
+  grad_checkpoint: true
+  grad_accumulation_steps: 4
+  seed: 42
+  steps_per_report: 50
+  save_every: 100
+
+memory_guard:
+  budget_gb: 24
+  max_wired_gb: 18
+  min_free_mb: 500
+  model_estimate_gb: 4.7           # qwen3.5-9b-mlx-4bit 权重估计

@@ -1,0 +1,50 @@
+# qxen_joint_v1 训练配置（首轮 capsule-only，1000 档）。
+#
+# 依据：
+#   - skill §5.1 拓扑：rank 8 / num_layers 2 / lr 4e-6 / max_seq_length 448
+#   - Kimi-Expert joint 上下文确认（2026-08-15）：
+#       Q4: 首轮 capsule-only 合规，adapter 仍名 qxen_joint_v1（task_type 分流位预留）
+#       Q2: prompt=task_type 标签+材料；completion=结构化 capsule
+#       Q3: Gate 字段（operative_status/authority/provenance）进 completion，不进 prompt
+#   - max_seq_length: skill 定 448 基于 20 条短样本；data1000 转换后实测
+#     train max 541 / valid max 479 tokens。内存实测（2026-08-15 首次启动）：
+#     seq=576 + rank8/layers2 在 24GB 机器上加载瞬时 free<500MB，被 memory_monitor 保护性终止。
+#     修正为 seq=512（对齐历史安全基线 lora_train_safe.yaml：seq=512/layers=4/rank=4
+#     在 T023-T041 连续跑通），seq512 下仅 2/800 条超限（mlx 自动截断 prompt，影响极小）。
+#     layers=2（skill 拓扑）比历史 layers=4 更小，更安全。
+#     注：skill §0-§9 冻结，此为运行时配置调参（不修改 skill 文本）。
+#   - 数据：data/r3/ec_v1/data1000/train_format/{train,valid}.jsonl
+#     train 800（全 capsule）/ valid 200（fresh 全量）
+#
+# 训练纪律（skill §5.2）：
+#   - 不 resume 失败 adapter
+#   - 每训练进程配 memory_monitor.sh（wired ≤ 18GB）
+#   - 训练与评估不并行
+#   - 每次 checkpoint 只汇报增量
+stage: qxen_joint_v1-round1
+target: evidence_capsule
+model: models/qwen3.5-9b-mlx-4bit
+data:
+  dir: data/r3/ec_v1/data1000/train_format
+  train_rows: 800
+  valid_rows: 200
+adapter:
+  output: models/qxen_joint_v1
+  fine_tune_type: lora
+  num_layers: 2
+  rank: 8
+  scale: 20
+training:
+  batch_size: 1
+  epochs: 1
+  iters: 400
+  learning_rate: 4.0e-06
+  max_seq_length: 512
+  grad_checkpoint: true
+  grad_accumulation_steps: 4
+  seed: 42
+  save_every: 25
+  steps_per_report: 10
+  val_batches: 0
+  steps_per_eval: 200
+  clear_cache_threshold: 1073741824

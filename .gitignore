@@ -2,6 +2,7 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .venv/
+venv/
 .env
 .env.*
 ! .env.example
@@ -11,15 +12,39 @@ build/
 runtime/
 models/
 logs/
+日志/
 data/
 outputs/
-# Never commit local model weights, private datasets, or runtime state.
+adapters/
+checkpoints/
+checkpoints*/
+train/
+train_workspace/
+train_logs/
+training/
+training_output/
+runs/
+results/
+shadow/
+evaluation_results/
+eval_results/
+audit/
+qxen_training_output/
 *.safetensors
 *.bin
 *.pt
 *.pth
 *.gguf
 *.ckpt
+*.jsonl
+.continue/
+调度状态/
+.启动任务调度器.lock/
+.DS_Store
+*.log
+*.pid
+*.bak*
+*qxen_*train*.log
 
 # Keep the public boundary policies while excluding all actual datasets.
 !data/

@@ -1,0 +1,29 @@
+# Evidence Capsule v2：核心胶囊 + 显式 schema 训练
+# 由 v1 clean 数据确定性转换而来；不覆盖旧 adapter。
+stage: qxen_ec_v2_schema_round1
+target: evidence_capsule_v2_core
+model: models/qwen3.5-9b-mlx-4bit
+data:
+  dir: data/r3/ec_v2
+  train_rows: 800
+  valid_rows: 200
+adapter:
+  output: models/qxen_ec_v2_schema_round1
+  fine_tune_type: lora
+  num_layers: 2
+  rank: 8
+  scale: 20
+training:
+  batch_size: 1
+  epochs: 1
+  iters: 400
+  learning_rate: 4.0e-06
+  max_seq_length: 512
+  grad_checkpoint: true
+  grad_accumulation_steps: 4
+  seed: 42
+  save_every: 25
+  steps_per_report: 10
+  val_batches: 0
+  steps_per_eval: 200
+  clear_cache_threshold: 1073741824

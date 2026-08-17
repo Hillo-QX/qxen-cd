@@ -1,0 +1,34 @@
+# R3A Realistic Gate 训练：真实时间线（as_of 正向切片，不由 label 反推）。
+stage: R3A-realistic-gate-v1
+target: operative_status
+model: models/qwen3.5-9b-mlx-4bit
+data:
+  dir: data/r3/real_timeline_context_derived
+  train_rows: 480
+  valid_rows: 120
+adapter:
+  output: models/r3a_realistic_v1
+  fine_tune_type: lora
+  num_layers: 2
+  rank: 8
+  scale: 20
+training:
+  batch_size: 1
+  epochs: 1
+  iters: 480
+  learning_rate: 4.0e-06
+  max_seq_length: 512
+  grad_checkpoint: true
+  grad_accumulation_steps: 4
+  seed: 42
+  save_every: 100
+  steps_per_report: 50
+  val_batches: 25
+  steps_per_eval: 100
+  resume_adapter_file: null
+gate:
+  operative_status_accuracy: 0.90
+  superseded_rejection: 0.95
+  wrong_authority_preference_rate: 0.03
+  critical_t0_t1_miss: 0
+  invalid_output: 0

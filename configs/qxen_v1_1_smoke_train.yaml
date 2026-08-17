@@ -1,0 +1,28 @@
+# v1.1 smoke 验证配置 —— 仅用于管道修复验证，非正式训练
+stage: qxen_v1_1-smoke-pipeline-fix
+target: evidence_capsule
+model: models/qwen3.5-9b-mlx-4bit
+data:
+  dir: data/v1.1/smoke
+  train_rows: 4
+  valid_rows: 3
+adapter:
+  output: models/qxen_v1_1_smoke
+  fine_tune_type: lora
+  num_layers: 2
+  rank: 8
+  scale: 20
+training:
+  batch_size: 1
+  epochs: 1
+  iters: 2
+  learning_rate: 4.0e-06
+  max_seq_length: 512
+  grad_checkpoint: true
+  grad_accumulation_steps: 1
+  seed: 42
+  save_every: 25
+  steps_per_report: 1
+  val_batches: 10
+  steps_per_eval: 1
+  clear_cache_threshold: 1073741824

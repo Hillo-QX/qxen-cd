@@ -1,0 +1,32 @@
+# QXEN-CD R1.2 — ELEMENT-AWARE MATERIALITY REPAIR 首次训练配置
+# 数据: data/r1.2/mlx/ (train 420 / valid 20), prompt 含 TASK+MATERIAL ELEMENT MAP+CANDIDATE
+# 起点: resume outputs/lora_adapters_r1_recall/adapters.safetensors (延续 R1.1 修复能力, 注入 element-awareness)
+# 超参: 延续 R1.1 (rank8/lr5e-6/layers4/seq512/batch1/ga4), iters=420 = 1 完整 epoch (420 样本)
+# 目标: 修正 R1.1 False REL (非 material 元素误判 REL), 保持 REL/IRREL 判别能力
+
+model: models/qwen3.5-9b-mlx-4bit
+
+data:
+  dir: data/r1.2/mlx                 # 含 train.jsonl (420) + valid.jsonl (20)
+  instruction: "决策：(REL|IRREL) 只输出一个标签词。"
+
+training:
+  adapter_path: outputs/lora_adapters_r1_recall_r12
+  resume_adapter_file: outputs/lora_adapters_r1_recall/adapters.safetensors
+  iters: 420                         # 1 完整 epoch (420 训练样本, batch=1)
+  batch_size: 1
+  grad_accumulation_steps: 4
+  learning_rate: 5e-6                # 保守, 与 R1.1 一致
+  num_layers: 4
+  max_seq_length: 512
+  grad_checkpoint: true
+  save_every: 50
+  steps_per_report: 10
+  steps_per_eval: 100
+  val_batches: 10                    # valid 20 条取 10 条评估 (控制时间)
+  clear_cache_threshold: 1073741824  # 1GB, 缓解内存 (R1.1 iter1015 SIGTERM 教训)
+  seed: 42
+
+notes:
+  - 首次基线运行: 1 epoch 验证管线跑通 + 产出检查点/日志/metrics
+  - 后续迭代再拉长训练轮数

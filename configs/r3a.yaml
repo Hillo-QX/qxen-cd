@@ -1,0 +1,41 @@
+# configs/r3a.yaml — R3A Operative Status adapter (CURRENT/STALE/SUPERSEDED)
+# 用户决策 2026-08-13: 拆分单一目标 adapter, 从干净 Base 重训, valid checkpoint 选择
+# 数据: data/r3/staging/r3a/ (train2160 balanced 720×3, valid300)
+stage: R3A
+version: "1.0"
+skill_ref: "QXEN_R2_R7_LEGAL_ELEMENT_TRAINING_SKILL.md#8"
+target: "operative_status"
+
+model: models/qwen3.5-9b-mlx-4bit
+
+data:
+  dir: data/r3/staging/r3a
+  train_rows: 2160
+  valid_rows: 300
+
+adapter:
+  output: models/r3a
+  fine_tune_type: lora
+  num_layers: 4
+  rank: 8
+  scale: 20
+
+training:
+  batch_size: 1
+  epochs: 1
+  learning_rate: 4.0e-06
+  max_seq_length: 512
+  grad_checkpoint: true
+  grad_accumulation_steps: 4
+  seed: 42
+  iters: 2160
+  steps_per_report: 100
+  save_every: 100            # 每100 iter 保存 checkpoint (valid 选择用)
+  val_batches: 100           # val-batches>0, 开启 valid loss 计算 (checkpoint 选择)
+  steps_per_eval: 100
+  resume_adapter_file: null  # 从干净 Base 初始化, 禁止 resume 旧 adapter
+
+gate:
+  operative_status_accuracy: 0.90
+  critical_t0_t1_miss: 0
+  invalid_output: 0

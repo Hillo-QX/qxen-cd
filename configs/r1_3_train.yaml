@@ -1,0 +1,32 @@
+# QXEN-CD R1.3 B3 — 数据增补后微调训练配置
+# 数据: data/r1.3/mlx/ (train 108 = train_batch5 增补, 五类 T1-T5), prompt 协议与 R1.2 一致
+# 起点: resume outputs/r1.2_multi_epoch/adapters.safetensors (R1.2 3epoch 最终, sha256 0c0ead0d)
+# 超参: 延续 R1.2 (rank8/lr5e-6/layers4/seq512/batch1/ga4), iters=216 = 2 epoch (108 样本)
+# 目标: 注入 hard_irrel "表层相似+空存根" 判别 (R12-VALL-0005 类), False REL 1→0, 保持 valid≥0.95
+
+model: models/qwen3.5-9b-mlx-4bit
+
+data:
+  dir: data/r1.3/mlx                 # 含 train.jsonl (108), 无 valid (评估用 R1.2 valid 20 + Shadow 5)
+  instruction: "决策：(REL|IRREL) 只输出一个标签词。"
+
+training:
+  adapter_path: outputs/lora_adapters_r1_recall_r13
+  resume_adapter_file: outputs/r1.2_multi_epoch/adapters.safetensors
+  iters: 216                         # 2 完整 epoch (108 训练样本, batch=1)
+  batch_size: 1
+  grad_accumulation_steps: 4
+  learning_rate: 5e-6                # 保守微调, 与 R1.2 一致
+  num_layers: 4
+  max_seq_length: 512
+  grad_checkpoint: true
+  save_every: 36
+  steps_per_report: 10
+  steps_per_eval: 54
+  val_batches: 0                     # 本数据无 valid, 训练期不评估
+  clear_cache_threshold: 1073741824
+  seed: 42
+
+notes:
+  - B3 微调: 108 条增补样本, 2 epoch, resume R1.2 收敛 adapter
+  - 评估/校准在 B3 内用 R1.2 valid 20 + Shadow 5 (只读) 独立执行

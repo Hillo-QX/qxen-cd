@@ -1,0 +1,40 @@
+# Evidence Capsule v1 训练（T001）。
+# Dispatcher 决策(2026-08-14): 选项A 全20条训练, LoRA rank8/lr4e-6/epochs=2, 防overfit小步。
+# 任务映射: real 12 条→R1/R2(relevance/key_evidence/reference/sufficiency),
+#           manual 8 条→R3/R4(timeline/relations/conflicts/operative_status/压缩)。
+# 冻结约束: 禁改 models/r3a_cot_v5 与旧 eval 数据; 合成主线已冻结不复用。
+stage: EC-v1
+target: evidence_capsule
+model: models/qwen3.5-9b-mlx-4bit
+data:
+  dir: data/r3/staging/ec_v1
+  train_rows: 20
+  valid_rows: 0
+adapter:
+  output: models/ec_v1
+  fine_tune_type: lora
+  num_layers: 2
+  rank: 8
+  scale: 20
+training:
+  batch_size: 1
+  epochs: 2
+  iters: 40
+  learning_rate: 4.0e-06
+  max_seq_length: 448
+  grad_checkpoint: true
+  grad_accumulation_steps: 4
+  seed: 42
+  save_every: 10
+  steps_per_report: 5
+  val_batches: 0
+  steps_per_eval: 40
+  resume_adapter_file: null
+gate:
+  # 多维 Gate 阈值见 reports/r3/gate_conflict_hide_threshold.md
+  conflict_hide_explicit: 0.05
+  conflict_hide_implicit: 0.30
+  traceability: 0.95
+  premature_action: 0.05
+  key_fact_tamper: 0
+  immutable_loss: 0

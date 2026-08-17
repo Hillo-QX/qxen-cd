@@ -1,0 +1,34 @@
+# R3A''' structured v3 (as_of) resume：从 Iter 100 checkpoint 继续，剩余 1817 iters。
+stage: R3A-structured-v3-asof
+target: operative_status
+model: models/qwen3.5-9b-mlx-4bit
+data:
+  dir: data/r3/staging/r3a_structured_v3
+  train_rows: 1917
+  valid_rows: 243
+adapter:
+  output: models/r3a_structured_v3
+  fine_tune_type: lora
+  num_layers: 2
+  rank: 8
+  scale: 20
+training:
+  batch_size: 1
+  epochs: 1
+  iters: 1817
+  learning_rate: 4.0e-06
+  max_seq_length: 448
+  grad_checkpoint: true
+  grad_accumulation_steps: 4
+  seed: 42
+  save_every: 100
+  steps_per_report: 100
+  val_batches: 50
+  steps_per_eval: 100
+  resume_adapter_file: models/r3a_structured_v3/0000100_adapters.safetensors
+gate:
+  operative_status_accuracy: 0.90
+  superseded_rejection: 0.95
+  wrong_authority_preference_rate: 0.03
+  critical_t0_t1_miss: 0
+  invalid_output: 0

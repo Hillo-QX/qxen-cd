@@ -1,0 +1,26 @@
+# R3A-hard v2：冻结 train 去重、真实分布、确定性内部留出；从 Base 冷启动。
+stage: R3A-hard-v2
+target: operative_status
+model: models/qwen3.5-9b-mlx-4bit
+data:
+  dir: data/r3/staging/r3a_hard_v2
+adapter:
+  output: models/r3a_hard_v2
+  fine_tune_type: lora
+  num_layers: 2
+training:
+  batch_size: 1
+  learning_rate: 4.0e-06
+  max_seq_length: 256
+  grad_checkpoint: true
+  grad_accumulation_steps: 4
+  seed: 42
+  save_every: 100
+  steps_per_report: 100
+  val_batches: 50
+  steps_per_eval: 100
+  resume_adapter_file: null
+gate:
+  operative_status_accuracy: 0.90
+  superseded_rejection: 0.95
+  wrong_authority_preference_rate: 0.03

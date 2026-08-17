@@ -1,0 +1,41 @@
+# configs/r3a_v2.yaml — R3A v2 Operative Status adapter (统一尾句重训)
+# T362 重训方案: prompt=text+统一尾句, completion=纯标签 (与 r3_gate_eval.py prompt_for 对齐)
+# 超参与 r3a.yaml 完全一致, 仅 data.dir / adapter.output 指向 v2
+stage: R3A
+version: "1.0"
+skill_ref: "QXEN_R2_R7_LEGAL_ELEMENT_TRAINING_SKILL.md#8"
+target: "operative_status"
+
+model: models/qwen3.5-9b-mlx-4bit
+
+data:
+  dir: data/r3/staging/r3a_v2
+  train_rows: 2160
+  valid_rows: 300
+
+adapter:
+  output: models/r3a_v2
+  fine_tune_type: lora
+  num_layers: 4
+  rank: 8
+  scale: 20
+
+training:
+  batch_size: 1
+  epochs: 1
+  learning_rate: 4.0e-06
+  max_seq_length: 512
+  grad_checkpoint: true
+  grad_accumulation_steps: 4
+  seed: 42
+  iters: 2160
+  steps_per_report: 100
+  save_every: 100            # 每100 iter 保存 checkpoint (valid 选择用)
+  val_batches: 100           # val-batches>0, 开启 valid loss 计算 (checkpoint 选择)
+  steps_per_eval: 100
+  resume_adapter_file: null  # 从干净 Base 初始化, 禁止 resume 旧 adapter
+
+gate:
+  operative_status_accuracy: 0.90
+  critical_t0_t1_miss: 0
+  invalid_output: 0

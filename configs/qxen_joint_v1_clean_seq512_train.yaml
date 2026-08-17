@@ -1,0 +1,28 @@
+# clean prompt seq512 训练；独立于 seq384 探针，不覆盖任何已有 adapter
+stage: qxen_joint_v1-clean-seq512-round1
+target: evidence_capsule
+model: models/qwen3.5-9b-mlx-4bit
+data:
+  dir: data/r3/ec_v1/data1000/clean_train_format
+  train_rows: 800
+  valid_rows: 200
+adapter:
+  output: models/qxen_joint_v1_clean_seq512
+  fine_tune_type: lora
+  num_layers: 1
+  rank: 4
+  scale: 20
+training:
+  batch_size: 1
+  epochs: 1
+  iters: 400
+  learning_rate: 4.0e-06
+  max_seq_length: 512
+  grad_checkpoint: true
+  grad_accumulation_steps: 4
+  seed: 42
+  save_every: 25
+  steps_per_report: 10
+  val_batches: 0
+  steps_per_eval: 200
+  clear_cache_threshold: 1073741824

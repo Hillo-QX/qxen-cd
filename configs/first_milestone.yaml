@@ -1,0 +1,16 @@
+# QXEN First Training Milestone 默认配置 (T001 变体#122)
+model_name: qwen3.5-9b-mlx-4bit
+model:
+  name: qwen3.5-9b-mlx-4bit
+  path: models/qwen3.5-9b-mlx-4bit
+
+data:
+  train_path: data/distill_ctxA/train.jsonl
+  valid_path: data/distill_ctxA/valid.jsonl
+  test_path: data/distill_ctxA/test.jsonl
+
+train:
+  batch_size: 8
+  learning_rate: 0.01
+  epochs: 1
+  seed: 42

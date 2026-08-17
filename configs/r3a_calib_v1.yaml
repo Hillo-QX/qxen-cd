@@ -1,0 +1,23 @@
+# R3A fresh-like 校准 v1：新 adapter 冷启动，禁止 resume R3A-hard v2。
+stage: R3A-calib-v1
+target: operative_status
+model: models/qwen3.5-9b-mlx-4bit
+data:
+  dir: data/r3/staging/r3a_calib_v1
+adapter:
+  output: models/r3a_calib_v1
+  fine_tune_type: lora
+  num_layers: 2
+training:
+  batch_size: 1
+  iters: 1620
+  learning_rate: 4.0e-06
+  max_seq_length: 256
+  grad_checkpoint: true
+  grad_accumulation_steps: 4
+  seed: 42
+  save_every: 100
+  steps_per_report: 100
+  val_batches: 0
+  steps_per_eval: 100
+  resume_adapter_file: null

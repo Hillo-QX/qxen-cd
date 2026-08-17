@@ -1,0 +1,115 @@
+# lora_train_safe.yaml - QXEN 低内存安全 LoRA 训练配置 (v3, 2026-08-12)
+#
+# 背景（2026-08-12 两次整机重启复盘）：
+#   v0: max_seq_length=2048 / num_layers=16 / grad_checkpoint=false
+#       -> 训练进程 RSS 23.15GB，触发 IOGPUGroupMemory.cpp:528 内核 panic 整机重启(18:45)。
+#   v1: max_seq_length=1024 / num_layers=8 仍报告 Peak mem 33.6GB，
+#       wired 峰值 20.2GB / free 多次跌至 27-117MB，整机再次崩溃重启(19:06)。
+#
+# v2 进一步收窄：
+#   1) max_seq_length 1024 -> 512        （激活内存再砍半）
+#   2) num_layers       8   -> 4         （LoRA 层数再减半）
+#   3) LoRA rank        8   -> 4         （可训练参数再减）
+#   4) clear_cache_threshold 2GB -> 1GB  （更激进清理 MLX allocator cache）
+#   5) save_every       10  -> 5         （更快落盘，崩溃损失更小）
+#   6) iters           100 -> 50         （缩短单次训练时长，分多次跑）
+#   7) batch_size 保持 1、grad_checkpoint 保持 true（最小内存）
+#
+# v3（T023 第二次训练批次）：
+#   - iters 50 -> 100          （首次 50 iters 验证通过，继续训练观察收敛）
+#   - save_every 5 -> 10       （100 iters 每 10 存 1 次 => 10 个 checkpoint）
+#   - steps_per_report 10 -> 5 （更细粒度 loss 采样，避免 T022 粒度不足问题）
+#
+# v4（T024 第三次训练批次）：
+#   - iters 100 -> 150         （继续推进收敛里程碑）
+#
+# v5（T025 第四次训练批次）：
+#   - iters 150 -> 200         （进一步推进收敛）
+#
+# v6（T026 第五次训练批次）：
+#   - iters 200 -> 250         （进一步推进收敛）
+#
+# v7（T027 第六次训练批次）：
+#   - iters 250 -> 300         （进一步推进收敛）
+#
+# v8（T028 第七次训练批次）：
+#   - iters 300 -> 350         （进一步推进收敛）
+#
+# v9（T029 第八次训练批次）：
+#   - iters 350 -> 400         （进一步推进收敛）
+#
+# v10（T030 第九次训练批次）：
+#   - iters 400 -> 450         （继续推进收敛，目标 val ≤ 1.5）
+#
+# v11（T031 第十次训练批次）：
+#   - iters 450 -> 500         （继续推进收敛，目标 val ≤ 1.5）
+#
+# v12（T032 第十一次训练批次）：
+#   - iters 500 -> 550         （Dispatcher 决策：val≤1.586 则继续；>1.586 则收敛完成停止）
+#
+# v13（T034 Step B：平台区诊断实验）：
+#   - LoRA rank 4 -> 8        （唯一修改项，验证 LoRA capacity 是否为平台瓶颈）
+#   - iters 保持 550           （遵守用户协议"同一训练长度"，一次只改一个变量）
+#   - 其余超参数与 v12 完全一致（seq=512 / layers=4 / lr=1e-5 / batch=1 / seed=0）
+#   - validation set 已扩大为 30 条（Step A，data/eval_set/valid.jsonl）
+#
+# v14（T036 Step C：grad_accumulation_steps 测试）：
+#   - grad_accumulation_steps 1 -> 4  （唯一训练超参数变更，降低 batch=1 梯度噪声）
+#   - adapter_path -> outputs/lora_adapters_stepC （独立目录，保护现有 rank8 checkpoint）
+#   - 其余与 v13 一致（rank=8 / iters=550 / batch=1 / lr=1e-5 / seed=0 / 30条验证集）
+#
+# v15（T038 Step D：学习率精调测试）：
+#   - learning_rate 1e-5 -> 5e-6  （唯一训练超参数变更，降低 lr 观察更细粒度收敛）
+#   - adapter_path -> outputs/lora_adapters_stepD （独立目录，保护 rank8/grad_accum4 checkpoint）
+#   - 其余与 v14 一致（rank=8 / grad_accum=4 / iters=550 / batch=1 / seed=0 / 30条验证集）
+#
+# v16（T040 数据侧 Step A：过采样增强训练）：
+#   - data: data/eval_set -> data/augA （中文文档/规则类19条 2x 过采样, 92->111条）
+#   - 超参回退 rank4 基线：rank 8->4 / lr 5e-6->1e-5 / grad_accum 4->1 / iters 550->450
+#   - adapter_path -> outputs/lora_adapters_dataA （独立目录）
+#   - 无 keys（全模块转换，与基线一致）；对齐记录基线 rank4/iter450=1.4135
+#
+# v17（T041 数据侧 Step B：LLM 同义改写扩充）：
+#   - data: data/augA -> data/augB （111条 + 37条改写变体 = 148条）
+#   - 超参与 v16 一致（rank4 基线：rank=4/lr=1e-5/ga=1/iters=450/全模块无keys）
+#   - adapter_path -> outputs/lora_adapters_dataB （独立目录）
+#
+# 配套保护（已强化）：
+#   scripts/memory_monitor.sh：wired>18GB 或 free<500MB -> SIGTERM 训练进程，采样 2s。
+
+model: models/qwen3.5-9b-mlx-4bit
+train: true
+fine_tune_type: lora
+optimizer: adam
+optimizer_config:
+  adam: {}
+  adamw: {}
+  muon: {}
+  sgd: {}
+  adafactor: {}
+data: data/augB
+seed: 0
+num_layers: 4
+batch_size: 1
+iters: 450
+val_batches: 12
+learning_rate: 0.00001
+steps_per_report: 5
+steps_per_eval: 200
+resume_adapter_file: null
+adapter_path: outputs/lora_adapters_dataB
+save_every: 10
+test: false
+test_batches: 500
+max_seq_length: 512
+grad_checkpoint: true
+grad_accumulation_steps: 1
+clear_cache_threshold: 1073741824
+lr_schedule: null
+lora_parameters:
+  rank: 4
+  dropout: 0.0
+  scale: 20.0
+mask_prompt: false
+report_to: null
+project_name: qxen-lora-safe
