@@ -1,13 +1,29 @@
-# QXEN-CD 0.1.0
+# QXEN-CD 0.2.0 — Codex Stable
 
-This first public cut exposes the auditable deterministic boundary of QXEN-CD.
-It is suitable for integration experiments and schema/guard evaluation.
+This is the current stable public release for Codex integrations. It exposes
+the auditable deterministic boundary of QXEN-CD and is suitable as the public
+baseline for schema, Guard, compaction, and capsule-lifecycle evaluation.
 
 It is not a bundled model release and does not claim that any particular model
 has passed a production Gate. The host application must supply a provider,
-authorization policy, domain validation, and final-agent review.
+authorization policy, domain validation, host hooks, and final-agent review.
 
-## Unreleased architecture update
+## Stable architecture
+
+- Long-text processing uses an advisory capsule path with lightweight
+  validation; `key_evidence` is optional for this path.
+- High-risk evidence processing retains full deterministic Guard checks for
+  schema, enums, source matching, truncation, and raw fallback preservation.
+- `compact` accepts advisory capsules, de-duplicates by hash, preserves source
+  pointers and verbatim evidence, and applies bounded context budgets.
+- P0 capsule state uses atomic claim leases, stale-worker recovery, late-token
+  rejection, and idempotent completion.
+- P1 surfacing uses same-session relevance and latest active-turn context
+  pressure; unrelated pending capsules remain isolated.
+- Audit records separate baseline estimates, fallback replay, capsule use, and
+  audit-only overhead.
+
+## Earlier architecture updates
 
 - Extended the deterministic audit ledger with `process`, `ingest`, `compact`,
   `bootstrap`, and `audit_assistant` pipeline attribution.

@@ -1,8 +1,9 @@
-# First public release checklist
+# Codex Stable release checklist
 
 ## Included in this directory
 
 - Deterministic Guard/Fallback core
+- Codex Stable 0.2.0 release metadata and architecture boundary
 - Rolling-context compactor
 - Minimal paired-usage audit writer
 - Pipeline-aware audit accounting with fallback replay and capsule-use tracking
@@ -31,3 +32,5 @@
    checking their upstream and data-provider terms.
 6. Do not advertise token savings until at least 50 comparable paired usage
    observations exist; report estimates and audit-only overhead separately.
+7. Ensure the release is identified as `QXEN-CD 0.2.0 — Codex Stable` and that
+   the public `main` branch, package version, README, and release notes agree.

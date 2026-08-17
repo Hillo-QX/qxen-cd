@@ -1,5 +1,8 @@
 # Architecture
 
+This document describes `QXEN-CD 0.2.0 — Codex Stable`, the recommended public
+baseline for Codex host integrations.
+
 QXEN-CD separates semantic proposal from deterministic enforcement:
 
 ```text
@@ -9,10 +12,12 @@ source material
 model/provider (optional, advisory)
       |
       v
-guard_v1 ----------------------> FALLBACK + raw output + reason
+lightweight validation -------> ADVISORY long-text capsule
       |
-      v
-ACCEPT Evidence Capsule
+      +------ high-risk evidence -> full guard_v1
+                                      |
+                                      v
+                              ACCEPT or FALLBACK
       |
       v
 compact: hash de-dup + verbatim retention + budget
@@ -21,14 +26,18 @@ compact: hash de-dup + verbatim retention + budget
 main-agent context and final decision
 ```
 
-The guard is intentionally conservative. It accepts only evidence sources
+The full Guard is intentionally conservative. It accepts only evidence sources
 that can be matched to the material supplied in the prompt. Formatting-only
 differences (Unicode normalization, whitespace, and dash variants) may be
-canonicalized; invented or untraceable sources are rejected.
+canonicalized; invented or untraceable sources are rejected. Long-text
+advisory capsules use a lightweight structural boundary: missing `key_evidence`
+is allowed and must not cause a false fallback.
 
 Compaction is not semantic summarization. It does not choose which authority
-is correct, resolve conflicts, or authorize an action. It only maintains an
-auditable bounded state and keeps rejected outputs in `pending_gpt_review`.
+is correct, resolve conflicts, or authorize an action. It maintains an
+auditable bounded state, keeps high-risk rejected outputs in
+`pending_gpt_review`, and retains pointer-only degraded records for long-text
+fallbacks so the host can recover the exact source when needed.
 
 The MCP adapter is optional. The deterministic Python functions are the stable
 integration boundary and can be embedded in a non-MCP host.
@@ -52,3 +61,12 @@ P1 surfacing uses the latest active-turn prompt usage rather than cumulative
 session totals. A pending capsule is surfaced only for the same session and a
 strong task/keyword relation; pressure-based surfacing additionally requires a
 fresh capsule and a weak keyword relation. Unrelated tasks remain isolated.
+
+## Stable Codex boundary
+
+The public Codex integration is host-neutral and provider-neutral. The host
+must provide the MCP process, provider call, hook lifecycle, transcript access,
+and final decision layer. QXEN-CD only provides deterministic primitives and
+advisory capsule handling. Personal hook files, model caches, training assets,
+private logs, and machine-specific paths are intentionally outside this
+repository.

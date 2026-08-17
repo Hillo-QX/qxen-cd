@@ -1,4 +1,4 @@
-# 任务调度器（DeepSeek Dispatcher Infrastructure）
+# 任务调度器（DeepSeek Dispatcher Infrastructure）— QXEN-CD Codex Stable 0.2.0
 
 > **QXEN-CD 方法论状态：R1.9 CLOSED（2026-08-13）**
 > 冻结资产 28 项 SHA256 全 OK、79 条终态回归 78/79 PASS（唯一失败 RV17-E007 为
@@ -7,6 +7,35 @@
 
 这是一个**通用任务调度基础设施**，不是任何金融项目的一部分。
 它与业务项目完全解耦，可以服务任何 target workspace。
+
+## Stable release
+
+`0.2.0` is the current Codex Stable release. It is the recommended public
+baseline for Codex integrations and includes the deterministic P0/P1 capsule
+lifecycle, active-turn context-pressure routing, source-safe Guard behavior,
+and long-text advisory compaction.
+
+The stable production path is:
+
+```text
+long text -> provider (advisory) -> lightweight validation -> ADVISORY capsule
+          -> deterministic compact -> Codex main-agent review
+```
+
+High-risk evidence tasks use the full deterministic Guard. Long-text advisory
+capsules do not require `key_evidence`; missing that optional field does not
+create a false fallback. The public package remains provider-neutral and does
+not load model weights.
+
+## Codex integration boundary
+
+The Codex adapter is the most stable documented host integration in this
+release. It is intentionally host-neutral: Codex supplies the provider and
+hooks, while QXEN-CD supplies deterministic validation, compaction, capsule
+state, and audit primitives. The public repository does not include personal
+Codex configuration, SessionStart/UserPromptSubmit hooks, credentials, local
+paths, or private session state. See `integrations/codex/README.md` and
+`docs/architecture.md` for the exact boundary.
 
 系统有两种决策层后端 mode：
 
