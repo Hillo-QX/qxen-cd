@@ -19,13 +19,21 @@ The stable production path is:
 
 ```text
 long text -> provider (advisory) -> lightweight validation -> ADVISORY capsule
-          -> deterministic compact -> Codex main-agent review
+          -> deterministic compact/crop -> Context Burden gate
+          -> INJECT_QXEN only when final_gpt_payload_chars/direct_source_chars < 1
 ```
 
 High-risk evidence tasks use the full deterministic Guard. Long-text advisory
 capsules do not require `key_evidence`; missing that optional field does not
 create a false fallback. The public package remains provider-neutral and does
 not load model weights.
+
+Context savings are measured only by the payload that actually enters the main
+agent context. Full MCP envelopes, debug metadata, raw model output, and rolling
+`compact_state` are not counted as savings payload. If compacting produces no
+accepted capsule, or if the minimal `gpt_context_payload` is not shorter than
+directly reading the source, the adapter returns `BYPASS_QXEN` and the host
+should use the source path or targeted retrieval instead of injecting QXEN text.
 
 ## Codex integration boundary
 

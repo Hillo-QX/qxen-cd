@@ -45,10 +45,15 @@ QXEN-CD 是 GPT 主 Agent 的证据处理 sub-agent，不是最终裁决器。
 
 `qxen_cd_process` 和 `qxen_cd_ingest` 已从公开 MCP 删除。生产流程为
 `qxen_cd_longtext_distill(source_path=...) → qxen_cd_compact`，不接管 Codex 客户端原生上下文压缩。
-`qxen_cd_longtext_distill` 只返回一份胶囊表示，不内嵌 `compact_state`；
-只有需要滚动状态时才显式调用 `qxen_cd_compact`，避免同一摘要重复返回。
+`qxen_cd_longtext_distill` 默认只返回可直接消费的最小 `gpt_context_payload`，不内嵌
+`compact_state`、完整 preflight、raw model output 或调试记录；这些只能在显式
+`include_raw_longtext=true` 时进入 `debug_only`。默认注入口径不是“完整 capsule / 原文”，而是
+`Context Burden Ratio = final_gpt_payload_chars / direct_source_chars`。只有
+`accepted_capsules > 0` 且该 ratio < 1 时返回 `status=INJECT_QXEN`；否则返回
+`status=BYPASS_QXEN`、`guard_status=BYPASS`，不注入 QXEN 胶囊，也不把降级指针记入
+`accepted_capsules`。只有需要滚动状态时才显式调用 `qxen_cd_compact`，避免同一摘要重复返回。
 
-可观测 token 口径为：MCP 路径读入字符 − 返回胶囊字符 − 后续
+可观测 token 口径为：MCP 路径读入字符 − 最终进入 GPT 的 payload 字符 − 后续
 `qxen_cd_source_slice` 回源字符。该值由 `observable_path_accounting` 报告；
 绕过 MCP 的直接 shell/Read 属于明示盲区，不得默认为未回源。
 
@@ -104,10 +109,11 @@ GPT 主 Agent 负责最终解释与行动。
 - Long-text output is `ADVISORY`, never a final fact or Gate decision.
 - `key_evidence` is optional for long-text/advisory outputs; its absence must not produce `key_evidence_missing_or_invalid` or a hard fallback.
 - Guard mode is task-scoped: long-text uses `lightweight_json`; high-risk evidence uses `full_deterministic`.
-- Required audit fields: `pipeline=longtext_distill`, `chunk_count`, `chunk_chars`, `authority=advisory_only`, `requires_gpt_review=false`, `review_policy=conditional`.
-- Required source contract: `raw_pointer`, `source_locator.sha256`, and `consumption_policy.mode=capsule_first_targeted_retrieval`. Capsules are task-scoped functional summaries, never source-equivalent replacements; exact values/quotes, code edits, conflicts, missing evidence, and high-risk decisions require targeted source retrieval.
+- Required audit fields: `pipeline=longtext_distill`, `chunk_count`, `chunk_chars`, `authority=advisory_only`, `requires_gpt_review=false`, `review_policy=conditional`, and `context_burden.ratio`.
+- Required source contract: default payload keeps `raw_pointer` and `source_locator.sha256`; full `consumption_policy.mode=capsule_first_targeted_retrieval` is contract-level/debug metadata, not repeated in every default GPT payload. Capsules are task-scoped functional summaries, never source-equivalent replacements; exact values/quotes, code edits, conflicts, missing evidence, and high-risk decisions require targeted source retrieval.
+- Injection gate: `accepted_capsules > 0` and `final_gpt_payload_chars / direct_source_chars < 1`; otherwise return `BYPASS_QXEN` and do not retry the same capsule as a model failure.
 - Targeted source retrieval uses deterministic `qxen_cd_source_slice` with either a line range or query plus optional SHA-256 verification; it returns only a bounded verbatim excerpt and never loads a model.
-- PDF preflight returned to GPT must be a compact summary: page stats, table count, column counts, numeric continuity warnings, and at most three short sample rows; full coordinate rows remain local evidence only.
+- PDF/table/numeric preflight is local/default-hidden evidence. It may be returned only as compact debug metadata or when the task explicitly asks for table/numeric QA; full coordinate rows remain local evidence only.
 - Cross-chunk merge/deduplication/budget trimming belongs to `qxen_cd_compact`.
 - Codex response capsules require more than 4,096 UTF-8 bytes before QXEN routing;
   reusable keywords alone never override this minimum. Non-tabular prose must not

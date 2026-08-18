@@ -12,6 +12,14 @@ authorization policy, domain validation, host hooks, and final-agent review.
 
 - Long-text processing uses an advisory capsule path with lightweight
   validation; `key_evidence` is optional for this path.
+- Long-text injection now uses a hard Context Burden gate:
+  `final_gpt_payload_chars / direct_source_chars < 1` and at least one accepted
+  capsule are required before QXEN output is injected into the main agent.
+- Default long-text responses expose only minimal `gpt_context_payload`, burden
+  metrics, source pointer/hash, and chunk summary; full `compact_state`, raw
+  model output, and preflight/debug metadata are opt-in debug data.
+- `BYPASS_QXEN` is an intentional no-savings decision, not a retryable model
+  fallback and not an accepted capsule.
 - High-risk evidence processing retains full deterministic Guard checks for
   schema, enums, source matching, truncation, and raw fallback preservation.
 - `compact` accepts advisory capsules, de-duplicates by hash, preserves source

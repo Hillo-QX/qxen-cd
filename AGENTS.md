@@ -16,7 +16,7 @@ checkpoint 和长日志；仍不可用时按同样顺序调用 `local_summarize_
 
 - GPT-5.6 Luna 是主 Agent：负责 Agent Loop、训练调度、日志审核、checkpoint 选择、Gate 判定和阶段推进。
 - 本地 Qwen3.5 通过 `local-qwen` MCP 只负责高 token、低决策密度的研究辅助：日志蒸馏、因子候选生成、因子表达式初审、失败模式聚类，以及长文件/失败样本/重复状态的短状态胶囊压缩。
-- **运行时入口边界**：长文本只使用 `mcp__qxen_cd__qxen_cd_longtext_distill`；本地文件优先只传 `source_path`，由 MCP 在 GPT 上下文外读取，不先把整篇原文作为 `evidence` 传入。2,000–4,000 字符为安全区，4,000–6,000 为上限区，超过 6,000 由 MCP 确定性分块。跨块合并调用 `mcp__qxen_cd__qxen_cd_compact`。`qxen_cd_process` 与 `qxen_cd_ingest` 已从 MCP 删除；LocalQwen 不再负责通用长文档蒸馏。不要在每次任务前重新读取 skill，也不要把 skill 当作 MCP 的中间代理。
+- **运行时入口边界**：长文本只使用 `mcp__qxen_cd__qxen_cd_longtext_distill`；本地文件优先只传 `source_path`，由 MCP 在 GPT 上下文外读取，不先把整篇原文作为 `evidence` 传入。2,000–4,000 字符为安全区，4,000–6,000 为上限区，超过 6,000 由 MCP 确定性分块。默认返回只允许最小 `gpt_context_payload` 进入 GPT：先 longtext → compact/crop，再计算 `Context Burden Ratio = final_gpt_payload_chars / direct_source_chars`；只有 `accepted_capsules > 0` 且 ratio < 1 才注入 QXEN，否则 `BYPASS_QXEN` 并让主 Agent 按原路径/局部回源处理。`qxen_cd_process` 与 `qxen_cd_ingest` 已从 MCP 删除；LocalQwen 不再负责通用长文档蒸馏。不要在每次任务前重新读取 skill，也不要把 skill 当作 MCP 的中间代理。
 - **Guard 测试捷径**：枚举、自动埋点和 Guard fixture 只调用 `mcp__qxen_cd__qxen_cd_guard`（纯确定性校验，不加载模型）；Guard 按任务分层：长文本 advisory 只做 lightweight JSON 校验并标记 `advisory_only`，高风险证据任务才保留完整 Guard。
 - **交接胶囊筛选**：bootstrap 只把全局历史交接当候选源，必须按目标工作区（`target_workspace`）、任务关键词、逐行日期新鲜度和状态词筛选；旧版/归档/已替代内容降权或丢弃，最终只注入短胶囊。目标工作区参数只改变交接筛选，不授权读取或修改目标文件；历史交接不得直接等同当前结论。
 - **bootstrap 降级可见**：hook 未提供 task/task_type 时不得伪装成任务筛选，胶囊必须标记 `filter=off reason=no_task`；SessionStart 负责一次强制基础注入，UserPromptSubmit 仅在去重标记缺失/compact 后补注入；去重标记超过 24 小时自动失效。当前交接文档规模下不建立额外索引，除非逐行筛选成为可测瓶颈。

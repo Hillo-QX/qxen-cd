@@ -184,8 +184,14 @@ def record_capsule_use(capsule_id: str, work_item_id: str, *, used_by: str = "gp
 def record_path_distill(source_path: str, source_sha256: str, *, source_chars: int,
                         returned_chars: int, work_item_id: str = "", task_id: str = "",
                         capsule_id: str = "", workspace: str = "", session_id: str = "",
+                        context_burden_ratio: float | None = None,
+                        decision: str = "", accepted_capsules: int | None = None,
                         path: Path = DEFAULT_LOG) -> dict[str, Any]:
-    """Record observable path input and exact MCP response size."""
+    """Record observable path input and final GPT context burden.
+
+    ``returned_chars`` means the chars the main Agent should actually inject
+    into GPT after QXEN, not the full MCP envelope or debug/audit metadata.
+    """
     return append_event({
         "event_type": "path_distill_observation",
         "unit_type": "observable_context_accounting",
@@ -193,6 +199,9 @@ def record_path_distill(source_path: str, source_sha256: str, *, source_chars: i
         "source_sha256": str(source_sha256),
         "source_chars": max(0, int(source_chars)),
         "returned_chars": max(0, int(returned_chars)),
+        "context_burden_ratio": context_burden_ratio,
+        "decision": decision,
+        "accepted_capsules": accepted_capsules,
         "work_item_id": work_item_id,
         "task_id": task_id,
         "capsule_id": capsule_id,
@@ -235,6 +244,9 @@ def summarize_observable_paths(rows: list[dict[str, Any]]) -> dict[str, Any]:
                 "source_chars": int(row.get("source_chars") or 0),
                 "returned_chars": int(row.get("returned_chars") or 0),
                 "reread_chars": 0, "reread_events": 0,
+                "context_burden_ratio": row.get("context_burden_ratio"),
+                "decision": row.get("decision", ""),
+                "accepted_capsules": row.get("accepted_capsules"),
                 "work_item_id": row.get("work_item_id", ""),
                 "capsule_id": row.get("capsule_id", ""),
             })
@@ -255,6 +267,9 @@ def summarize_observable_paths(rows: list[dict[str, Any]]) -> dict[str, Any]:
             0, item["source_chars"] - item["returned_chars"] - item["reread_chars"])
         item["net_avoided_tokens_est"] = estimate_tokens(item["net_avoided_chars"])
         item["raw_reread_observed"] = item["reread_events"] > 0
+        denominator = item["source_chars"] or 1
+        item["observed_context_burden_ratio"] = round(
+            (item["returned_chars"] + item["reread_chars"]) / denominator, 6)
     return {
         "path_distill_calls": len(observations),
         "source_chars": sum(x["source_chars"] for x in observations),
@@ -263,6 +278,12 @@ def summarize_observable_paths(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "reread_events": sum(x["reread_events"] for x in observations),
         "net_avoided_chars": sum(x["net_avoided_chars"] for x in observations),
         "net_avoided_tokens_est": sum(x["net_avoided_tokens_est"] for x in observations),
+        "context_burden_ratio": (round(
+            (sum(x["returned_chars"] for x in observations) + sum(x["reread_chars"] for x in observations)) /
+            sum(x["source_chars"] for x in observations), 6)
+            if sum(x["source_chars"] for x in observations) else None),
+        "injected_qxen_calls": sum(x.get("decision") == "INJECT_QXEN" for x in observations),
+        "bypassed_qxen_calls": sum(x.get("decision") == "BYPASS_QXEN" for x in observations),
         "unmatched_retrieval_events": unmatched_retrievals,
         "observations": observations[-50:],
         "coverage": "MCP path distill + qxen_cd_source_slice rereads",

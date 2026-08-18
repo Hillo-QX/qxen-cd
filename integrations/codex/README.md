@@ -20,5 +20,11 @@ conditional review. For high-risk evidence work, the host should use the full
 Guard. P0/P1 capsule claiming, context pressure, and relevance checks remain
 deterministic host-state operations; they must not be delegated to a model.
 
+For Codex context saving, inject only the minimal `gpt_context_payload` returned
+after the Context Burden gate. The gate requires `accepted_capsules > 0` and
+`final_gpt_payload_chars / direct_source_chars < 1`. `BYPASS_QXEN` means the
+host should not retry the capsule or inject debug/compact metadata; it should
+fall back to source paths or bounded targeted retrieval.
+
 This public package does not include a personal Codex hook or installation
 configuration. Hosts should implement those pieces locally.

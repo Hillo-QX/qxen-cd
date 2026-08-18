@@ -776,10 +776,13 @@ async def qxen_cd_longtext_distill(source: str, evidence: str = "",
                                     source_path: str = "",
                                     max_tokens: int = 900, work_item_id: str = "",
                                     task_id: str = "", workspace: str = "",
-                                    session_id: str = "", capsule_id: str = "") -> dict:
+                                    session_id: str = "", capsule_id: str = "",
+                                    compact_max_chars: int = 2000,
+                                    include_raw_longtext: bool = False) -> dict:
     """Long-text faithful distillation; returns one capsule representation.
 
-    Rolling-state merge is intentionally separate: call qxen_cd_compact explicitly.
+    The default response is compacted for direct GPT consumption. Callers can
+    request the un-compacted diagnostic payload explicitly.
     """
     claim = _capsule_update(capsule_id, "claim", worker_id=f"qxen-longtext-{os.getpid()}")
     claim_token = str(claim.get("claim_token", ""))
@@ -791,9 +794,12 @@ async def qxen_cd_longtext_distill(source: str, evidence: str = "",
 
     def finish(result: dict) -> dict:
         if capsule_id:
+            # BYPASS is an intentional no-savings decision, not a retryable
+            # model failure. Mark it complete so the capsule queue does not
+            # spend more context/latency trying the same material again.
             action = "fail" if result.get("guard_status") == "FALLBACK" else "complete"
             update = _capsule_update(capsule_id, action,
-                                     str(result.get("fallback_reason", "")),
+                                     str(result.get("fallback_reason") or result.get("bypass_reason", "")),
                                      str(result.get("latency_s", "")),
                                      claim_token=claim_token,
                                      result_payload=result if action == "complete" else None)
@@ -875,15 +881,163 @@ async def qxen_cd_longtext_distill(source: str, evidence: str = "",
         if input_mode != "local_path" or not source_locator:
             return
         try:
+            burden = result.get("context_burden") or {}
+            # This is the amount that the host should actually inject into GPT.
+            # It is deliberately not the size of the MCP envelope or debug data.
+            effective_chars = int(burden.get("final_gpt_chars") or source_locator.get("content_chars") or 0)
             record_path_distill(
                 source_locator["path"], source_locator["sha256"],
                 source_chars=int(source_locator.get("content_chars") or 0),
-                returned_chars=len(json.dumps(result, ensure_ascii=False)),
+                returned_chars=effective_chars,
+                context_burden_ratio=float(burden.get("ratio") or 1.0),
+                decision=str(burden.get("decision") or result.get("status") or "unknown"),
+                accepted_capsules=int(result.get("accepted_capsule_count") or 0),
                 work_item_id=work_item_id, task_id=task_id,
                 capsule_id=str(result.get("capsule_id") or ""),
                 workspace=workspace, session_id=session_id, path=AUDIT_LOG)
         except Exception:
             pass
+
+    def compact_consumption_payload(records: list[dict], metadata: dict) -> dict:
+        """Return only a context-saving payload, or explicitly bypass QXEN.
+
+        ``compact_state`` is an audit/working-state object, not the GPT payload.
+        The hard acceptance rule is based on the serialized object under
+        ``gpt_context_payload``: if it is not shorter than the source context,
+        the caller must keep/read the source instead of injecting QXEN output.
+        """
+        limit = max(2000, min(int(compact_max_chars), 100000))
+        compact_state = compact(
+            records,
+            {"task_id": task_id or source, "as_of": _now()},
+            64,
+            limit,
+        )
+        # A degraded pointer is useful for audit/recovery but is not an
+        # accepted semantic capsule for context injection.
+        accepted = [
+            capsule for capsule in compact_state.get("accepted_capsules", [])
+            if isinstance(capsule, dict)
+            and capsule.get("provenance") != "qxen_longtext_fallback_pointer"
+        ]
+        source_locator = metadata.get("source_locator") or {}
+        baseline_chars = int(
+            metadata.get("source_chars")
+            or source_locator.get("content_chars")
+            or sum(int(record.get("source_chars") or 0) for record in records)
+            or 0
+        )
+
+        # Keep only fields intended for the main Agent. Raw model output,
+        # preflight tables and rolling-state bookkeeping stay outside this
+        # payload so they cannot silently inflate the measured burden.
+        allowed = {
+            "relevance", "sufficiency", "summary", "key_evidence", "timeline",
+            "relations", "conflicts", "uncertainty", "source", "raw_pointer",
+            "source_locator", "provenance", "advisory_only", "review_policy",
+        }
+        context_capsules = []
+        for capsule in accepted:
+            slim = {key: value for key, value in capsule.items() if key in allowed}
+            # Keep one canonical pointer at the payload level; duplicating path,
+            # hash and policy inside every capsule increases burden with no
+            # additional default-context value.
+            slim.pop("source_locator", None)
+            slim.pop("raw_pointer", None)
+            context_capsules.append(slim)
+        chunking_raw = metadata.get("chunking") or {}
+        chunking_summary = {
+            key: value for key, value in chunking_raw.items()
+            if key in {"mode", "chunks", "max_chars", "chunk_chars"}
+        }
+        context_payload = {
+            "capsules": context_capsules,
+            "source": metadata.get("source") or source_locator.get("path"),
+            "raw_pointer": metadata.get("raw_pointer") or source_locator.get("path"),
+            "source_locator": {
+                key: source_locator.get(key)
+                for key in ("path", "sha256", "span")
+                if source_locator.get(key)
+            },
+            "chunking": chunking_summary,
+            "authority": "advisory_only",
+            "review_policy": "conditional",
+        }
+        context_chars = len(json.dumps(context_payload, ensure_ascii=False, separators=(",", ":")))
+        ratio = (context_chars / baseline_chars) if baseline_chars else 1.0
+        inject = bool(accepted) and ratio < 1.0
+
+        burden = {
+            "baseline_chars": baseline_chars,
+            "final_gpt_chars": context_chars if inject else baseline_chars,
+            "ratio": round(ratio if inject else 1.0, 6),
+            "saved_chars": max(0, baseline_chars - context_chars) if inject else 0,
+            "decision": "INJECT_QXEN" if inject else "BYPASS_QXEN",
+            "metric": "final_gpt_payload_chars / direct_source_chars",
+        }
+        if not inject:
+            payload = {
+                "runtime": "QXEN-CD",
+                "task": "qxen_longtext_distill",
+                "status": "BYPASS_QXEN",
+                "guard_status": "BYPASS",
+                "bypass_reason": "no_accepted_capsule" if not accepted else "context_burden_not_reduced",
+                "authority": "advisory_only",
+                "accepted_capsule_count": 0,
+                "requires_gpt_review": False,
+                "review_policy": "conditional",
+                "context_burden": burden,
+                "gpt_context_payload": None,
+                "raw_pointer": metadata.get("raw_pointer") or source_locator.get("path"),
+                "source_locator": {
+                    key: source_locator.get(key)
+                    for key in ("path", "sha256", "span", "content_chars")
+                    if source_locator.get(key)
+                },
+                "chunking": chunking_summary,
+            }
+            if include_raw_longtext:
+                payload["debug_only"] = {
+                    "compact_state": compact_state,
+                    "records": records,
+                    "preflight": metadata.get("preflight"),
+                    "pdf_preflight": metadata.get("pdf_preflight"),
+                    "consumption_policy": metadata.get("consumption_policy"),
+                    "full_chunking": chunking_raw,
+                }
+            return payload
+
+        payload = {
+            "runtime": "QXEN-CD",
+            "task": "qxen_longtext_distill",
+            "status": "INJECT_QXEN",
+            "guard_status": "ADVISORY",
+            "authority": "advisory_only",
+            "accepted_capsule_count": len(accepted),
+            "requires_gpt_review": bool(compact_state.get("pending_gpt_review")),
+            "review_policy": "conditional",
+            "compact_applied": True,
+            "compact_max_chars": limit,
+            "context_burden": burden,
+            "gpt_context_payload": context_payload,
+            "raw_pointer": metadata.get("raw_pointer") or source_locator.get("path"),
+            "source_locator": {
+                key: source_locator.get(key)
+                for key in ("path", "sha256", "span", "content_chars")
+                if source_locator.get(key)
+            },
+            "chunking": chunking_summary,
+        }
+        if include_raw_longtext:
+            payload["debug_only"] = {
+                "compact_state": compact_state,
+                "records": records,
+                "preflight": metadata.get("preflight"),
+                "pdf_preflight": metadata.get("pdf_preflight"),
+                "consumption_policy": metadata.get("consumption_policy"),
+                "full_chunking": chunking_raw,
+            }
+        return payload
     # Deterministic paragraph-aware chunking: <=6K per call; no model decides chunks.
     max_chars = 6000
 
@@ -941,13 +1095,37 @@ async def qxen_cd_longtext_distill(source: str, evidence: str = "",
         result["review_policy"] = "conditional"
         result["chunking"] = {"mode": "single", "chunk_chars": len(evidence), "chunks": 1}
         attach_source_contract(result)
-        record_observable_path(result)
-        return finish(result)
+        payload = compact_consumption_payload(
+            [result],
+            {
+                "chunking": result["chunking"],
+                "source": source,
+                "source_chars": len(evidence),
+                "preflight": context,
+                "pdf_preflight": pdf_preflight,
+                "input_mode": input_mode,
+                "source_span": result.get("source_span", "full_source"),
+                "consumption_policy": consumption_policy,
+                "raw_pointer": result.get("raw_pointer"),
+                "source_locator": result.get("source_locator"),
+            },
+        )
+        record_observable_path(payload)
+        return finish(payload)
     paragraphs = [p.strip() for p in evidence.replace("\r", "\n").split("\n") if p.strip()]
     chunks: list[str] = []
     current: list[str] = []
     current_chars = 0
     for paragraph in paragraphs:
+        if len(paragraph) > max_chars:
+            if current:
+                chunks.append("\n".join(current))
+                current, current_chars = [], 0
+            chunks.extend(
+                paragraph[start:start + max_chars]
+                for start in range(0, len(paragraph), max_chars)
+            )
+            continue
         if current and current_chars + len(paragraph) + 1 > max_chars:
             chunks.append("\n".join(current))
             current, current_chars = [], 0
@@ -968,14 +1146,19 @@ async def qxen_cd_longtext_distill(source: str, evidence: str = "",
             task_id=task_id, workspace=workspace, session_id=session_id,
         )
         results.append(attach_source_contract(chunk_result, f"chunk:{index}/{len(chunks)}"))
-    combined = {"runtime": "QXEN-CD", "task": "qxen_longtext_distill",
-                "guard_status": "ADVISORY",
-                "chunking": {"mode": "deterministic_paragraph", "max_chars": max_chars,
-                             "chunks": len(chunks), "preflight": preflight_summary},
-                "pdf_preflight": pdf_preflight, "results": results,
-                "requires_gpt_review": False, "review_policy": "conditional",
-                "authority": "advisory_only", "input_mode": input_mode,
-                "consumption_policy": consumption_policy}
+    combined = compact_consumption_payload(
+        results,
+        {
+            "chunking": {"mode": "deterministic_paragraph", "max_chars": max_chars,
+                         "chunks": len(chunks), "preflight": preflight_summary},
+            "source": source,
+            "source_chars": len(evidence),
+            "pdf_preflight": pdf_preflight,
+            "input_mode": input_mode,
+            "source_span": "full_source",
+            "consumption_policy": consumption_policy,
+        },
+    )
     if source_locator:
         combined["raw_pointer"] = source_locator["path"]
         combined["source_locator"] = {**source_locator, "span": "full_source"}

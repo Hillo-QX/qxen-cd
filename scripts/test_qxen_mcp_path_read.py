@@ -73,13 +73,16 @@ async def main() -> int:
             {"qxen_cd_process", "qxen_cd_ingest"} & set(tools)
         ),
         "guard_status": payload.get("guard_status"),
-        "input_mode": payload.get("input_mode"),
         "raw_pointer": payload.get("raw_pointer"),
+        "source_locator_path": locator.get("path"),
         "source_hash_matches": locator.get("sha256") == expected_hash,
         "server_reported_bytes": locator.get("bytes"),
         "server_reported_content_chars": locator.get("content_chars"),
         "chunking": payload.get("chunking"),
         "embedded_compact_state": "compact_state" in payload,
+        "has_gpt_context_payload": bool(payload.get("gpt_context_payload")),
+        "context_burden": payload.get("context_burden", {}),
+        "accepted_capsule_count": payload.get("accepted_capsule_count"),
         "explicit_compact_status": compact_payload.get("status"),
         "source_slice_status": slice_payload.get("status"),
         "source_slice_chars": len(slice_payload.get("text", "")),
@@ -89,11 +92,20 @@ async def main() -> int:
     assert proof["evidence_chars_sent"] == 0
     assert proof["schema_has_source_path"] is True
     assert proof["old_public_tools_present"] == []
-    assert proof["input_mode"] == "local_path"
     assert proof["raw_pointer"] == str(SOURCE.resolve())
+    assert proof["source_locator_path"] == str(SOURCE.resolve())
     assert proof["source_hash_matches"] is True
     assert int(proof["server_reported_content_chars"] or 0) > 0
     assert proof["embedded_compact_state"] is False
+    assert proof["context_burden"]["decision"] in {"INJECT_QXEN", "BYPASS_QXEN"}
+    if proof["context_burden"]["decision"] == "INJECT_QXEN":
+        assert proof["has_gpt_context_payload"] is True
+        assert proof["context_burden"]["ratio"] < 1
+        assert int(proof["accepted_capsule_count"] or 0) > 0
+    else:
+        assert proof["has_gpt_context_payload"] is False
+        assert proof["context_burden"]["ratio"] == 1.0
+        assert int(proof["accepted_capsule_count"] or 0) == 0
     assert proof["explicit_compact_status"] == "OK"
     assert proof["source_slice_status"] == "OK"
     assert proof["observable_path_accounting"]["reread_events"] >= 1

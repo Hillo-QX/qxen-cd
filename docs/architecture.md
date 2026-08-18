@@ -23,6 +23,13 @@ lightweight validation -------> ADVISORY long-text capsule
 compact: hash de-dup + verbatim retention + budget
       |
       v
+Context Burden gate
+      |
+      +---- ratio < 1 and accepted_capsules > 0 -> minimal gpt_context_payload
+      |
+      +---- otherwise -> BYPASS_QXEN and source/targeted retrieval
+      |
+      v
 main-agent context and final decision
 ```
 
@@ -38,6 +45,14 @@ is correct, resolve conflicts, or authorize an action. It maintains an
 auditable bounded state, keeps high-risk rejected outputs in
 `pending_gpt_review`, and retains pointer-only degraded records for long-text
 fallbacks so the host can recover the exact source when needed.
+
+The production savings gate is deliberately stricter than “capsule size vs.
+source size.” The measured unit is the final payload that the host would inject
+into the main agent context. Full MCP envelopes, debug fields, preflight tables,
+raw model output, and rolling `compact_state` are excluded from the default
+payload. If the default `gpt_context_payload` is not smaller than the direct
+source context, QXEN-CD returns `BYPASS_QXEN`; this is a successful no-injection
+decision, not a Guard failure.
 
 The MCP adapter is optional. The deterministic Python functions are the stable
 integration boundary and can be embedded in a non-MCP host.

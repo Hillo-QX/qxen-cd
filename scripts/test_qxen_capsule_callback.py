@@ -38,7 +38,7 @@ async def run_longtext_case(envelope: Path, source: str) -> dict:
     qxen._qxen_generate = fake_process
     try:
         return await qxen.qxen_cd_longtext_distill(
-            source=source, evidence="可复用状态摘要",
+            source=source, evidence=("可复用状态摘要。" * 400),
             capsule_id=str(envelope), session_id="callback-longtext-session",
         )
     finally:
@@ -71,14 +71,16 @@ def main() -> int:
         text_source.write_text("不是 PDF", encoding="utf-8")
         result = asyncio.run(run_longtext_case(longtext_envelope, str(text_source)))
         assert result["guard_status"] == "ADVISORY"
-        assert result["preflight"]["table_line_count"] == 0
-        assert result["received_preflight"] is False
+        assert result["context_burden"]["decision"] == "INJECT_QXEN"
+        assert result["context_burden"]["ratio"] < 1
+        assert "preflight" not in result
+        assert "debug_only" not in result
         data = json.loads(longtext_envelope.read_text(encoding="utf-8"))
         assert data["status"] == rc.COMPLETED_STATUS
-        assert data["distilled_result"]["gpt_context"]["capsule"]["summary"] == ["保真摘要"]
+        assert data["distilled_result"]["gpt_context_payload"]["capsules"][0]["summary"] == ["保真摘要"]
 
         path_only = Path(tmp) / "path-only-longtext.txt"
-        path_only.write_text("路径模式的可复用状态。", encoding="utf-8")
+        path_only.write_text("路径模式的可复用状态。" * 400, encoding="utf-8")
         original = qxen._qxen_generate
 
         async def fake_process(**kwargs):
@@ -95,16 +97,19 @@ def main() -> int:
             ))
         finally:
             qxen._qxen_generate = original
-        assert path_result["input_mode"] == "local_path"
         assert path_result["raw_pointer"] == str(path_only.resolve())
         assert path_result["source_locator"]["sha256"]
+        assert path_result["source_locator"]["path"] == str(path_only.resolve())
         assert "compact_state" not in path_result
+        assert path_result["context_burden"]["decision"] == "INJECT_QXEN"
+        assert path_result["context_burden"]["ratio"] < 1
         explicit_state = asyncio.run(qxen.qxen_cd_compact(
             records=[path_result], task_id="path-only-explicit-compact",
         ))
         compacted = explicit_state["accepted_capsules"][0]
         assert compacted["raw_pointer"] == str(path_only.resolve())
-        assert compacted["consumption_policy"]["never_claim_full_source_replacement"] is True
+        assert path_result["gpt_context_payload"]["review_policy"] == "conditional"
+        assert path_result["gpt_context_payload"]["authority"] == "advisory_only"
         source_slice = qxen.qxen_cd_source_slice(
             str(path_only), path_result["source_locator"]["sha256"], query="可复用",
         )

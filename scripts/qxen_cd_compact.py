@@ -25,6 +25,8 @@ def _source_ref(record: dict[str, Any]) -> str | None:
 
 
 def _degraded_longtext(record: dict[str, Any]) -> dict[str, Any] | None:
+    if record.get("guard_status") == "BYPASS" or record.get("status") == "BYPASS_QXEN":
+        return None
     task = str(record.get("task") or record.get("task_id") or "")
     if "longtext" not in task and "faithful_chunk" not in task and record.get("review_policy") != "conditional":
         return None
@@ -105,12 +107,29 @@ def _unwrap(record: dict[str, Any]) -> tuple[str, dict[str, Any] | None]:
             return "ADVISORY", capsule
     if status == "FALLBACK" or record.get("requires_gpt_review"):
         return "FALLBACK", None
+    if status == "BYPASS" or record.get("status") == "BYPASS_QXEN":
+        return "BYPASS", None
     # Accept direct guarded records for deterministic unit tests/integrations.
     return ("ACCEPT", record) if isinstance(record.get("key_evidence"), list) else ("FALLBACK", None)
 
 
 def compact(records: list[dict[str, Any]], state: dict[str, Any], max_items: int = 64,
             max_chars: int = 24000) -> dict[str, Any]:
+    expanded_records: list[dict[str, Any]] = []
+    for record in records:
+        payload = record.get("gpt_context_payload")
+        capsules = payload.get("capsules") if isinstance(payload, dict) else None
+        if record.get("guard_status") == "ADVISORY" and isinstance(capsules, list) and capsules:
+            for capsule in capsules:
+                if not isinstance(capsule, dict):
+                    continue
+                clone = dict(record)
+                clone["gpt_context"] = {"context_mode": "ADVISORY_ONLY", "capsule": capsule}
+                clone["source"] = capsule.get("source") or record.get("source") or record.get("raw_pointer")
+                expanded_records.append(clone)
+            continue
+        expanded_records.append(record)
+    records = expanded_records
     accepted = list(state.get("accepted_capsules", []))
     pending = list(state.get("pending_gpt_review", []))
     dropped = dict(state.get("dropped_summary", {}))
@@ -145,6 +164,9 @@ def compact(records: list[dict[str, Any]], state: dict[str, Any], max_items: int
             else:
                 dropped["duplicate_capsules"] = dropped.get("duplicate_capsules", 0) + 1
             dropped["longtext_fallback_pointers"] = dropped.get("longtext_fallback_pointers", 0) + 1
+            continue
+        if status == "BYPASS":
+            dropped["context_burden_bypass"] = dropped.get("context_burden_bypass", 0) + 1
             continue
         if status != "ACCEPT" or capsule is None:
             pending.append({
