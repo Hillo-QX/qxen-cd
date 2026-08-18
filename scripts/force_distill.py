@@ -52,10 +52,16 @@ BIG_OUTPUT_PATTERNS = (
     r"cat\s+\S+\.(log|json|jsonl|pkl|csv)(\s|$)",
     r"tail\s+-[0-9]+\s+\S+\.log",
     r"head\s+-[0-9]+\s+\S+\.(log|json|jsonl)",
+    r"sed\s+-n\s+['\"]?1,[0-9]{3,}p['\"]?\s+\S+",
+    r"(?:cat|head\s+-[0-9]+)\s+\S+\.(md|txt|rst)(\s|$)",
     r"less\s|more\s|vim\s|nano\s",
     r"python.*(print|json\.dump).*\.json",
     r"find\s+.*-name.*\.(jsonl|log|pkl)",
     r"rg\s+.*\.(jsonl|log)",
+)
+STRICT_LONG_READ_PATTERNS = (
+    r"sed\s+-n\s+['\"]?1,[0-9]{3,}p['\"]?\s+\S+",
+    r"(?:cat|head\s+-[0-9]+)\s+\S+\.(md|txt|rst)(\s|$)",
 )
 
 TRAIN_PATTERNS = (
@@ -132,6 +138,7 @@ def main() -> int:
     updated_command: str | None = None
     log_entry = {"event": "PreToolUse", "tool": tool, "cwd": cwd,
                  "session_id": session_id[:16]}
+    long_read_deny = False
 
     # ---- 1. 训练保护（最优先，适用于任何工具）----
     trains = training_processes()
@@ -183,6 +190,9 @@ def main() -> int:
             )
             log_entry["action"] = "output_guard"
             log_entry["command"] = cmd[:120]
+            if any(re.search(p, cmd) for p in STRICT_LONG_READ_PATTERNS):
+                long_read_deny = True
+                log_entry["action"] = "long_read_deny"
 
     # ---- 4. 无触发时静默（不注入噪音）----
     if not parts:
@@ -196,10 +206,13 @@ def main() -> int:
         "hookEventName": "PreToolUse",
         "additionalContext": capsule,
     }
-    if STRICT_MODE:
+    if STRICT_MODE or long_read_deny:
         hook_output.update({
             "permissionDecision": "deny",
-            "permissionDecisionReason": "长输入/输出必须先经过 safe_run 与 QXEN-CD/LocalQwen 蒸馏",
+            "permissionDecisionReason": (
+                "检测到大范围原文读取，已阻止进入上下文；请将 source_path 交给 "
+                "qxen_cd_longtext_distill 或 local_* 蒸馏后再局部回源"
+            ),
         })
     if updated_command is not None:
         hook_output.update({
@@ -207,7 +220,7 @@ def main() -> int:
             "updatedInput": {"command": updated_command},
         })
     print(json.dumps({"hookSpecificOutput": hook_output}, ensure_ascii=False), flush=True)
-    return 0 if updated_command is not None else (2 if STRICT_MODE else 0)
+    return 0 if updated_command is not None else (2 if STRICT_MODE or long_read_deny else 0)
 
 
 if __name__ == "__main__":
