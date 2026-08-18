@@ -917,6 +917,26 @@ async def qxen_cd_longtext_distill(source: str, evidence: str = "",
         the caller must keep/read the source instead of injecting QXEN output.
         """
         limit = max(2000, min(int(compact_max_chars), 100000))
+        accepted_records = []
+        dropped_chunks = []
+        for record in records:
+            raw_chars = int(record.get("raw_chunk_chars") or record.get("source_chars") or 0)
+            context = record.get("gpt_context") or {}
+            capsule = context.get("capsule") if isinstance(context, dict) else None
+            candidate_chars = (
+                len(json.dumps(capsule, ensure_ascii=False, separators=(",", ":")))
+                if isinstance(capsule, dict) else 0
+            )
+            if raw_chars and candidate_chars > raw_chars:
+                dropped_chunks.append({
+                    "chunk": record.get("raw_chunk_index"),
+                    "raw_chars": raw_chars,
+                    "candidate_chars": candidate_chars,
+                    "reason": "chunk_context_burden_not_reduced",
+                })
+                continue
+            accepted_records.append(record)
+        records = accepted_records
         compact_state = compact(
             records,
             {"task_id": task_id or source, "as_of": _now()},
@@ -1005,6 +1025,7 @@ async def qxen_cd_longtext_distill(source: str, evidence: str = "",
                     if source_locator.get(key)
                 },
                 "chunking": chunking_summary,
+                "dropped_chunks": dropped_chunks,
             }
             if include_raw_longtext:
                 payload["debug_only"] = {
@@ -1037,6 +1058,8 @@ async def qxen_cd_longtext_distill(source: str, evidence: str = "",
                 if source_locator.get(key)
             },
             "chunking": chunking_summary,
+            "partial": bool(dropped_chunks),
+            "dropped_chunks": dropped_chunks,
         }
         if include_raw_longtext:
             payload["debug_only"] = {

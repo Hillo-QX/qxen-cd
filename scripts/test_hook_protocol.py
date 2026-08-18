@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import tempfile
 import sys
 from pathlib import Path
 
@@ -33,6 +34,16 @@ def main() -> int:
     denied_output = denied["hookSpecificOutput"]
     assert denied_output["permissionDecision"] == "deny"
     assert "qxen_cd_longtext_distill" in denied_output["permissionDecisionReason"]
+    with tempfile.TemporaryDirectory() as tmp:
+        attachment = Path(tmp) / ".codex" / "attachments" / "pasted-text.txt"
+        attachment.parent.mkdir(parents=True)
+        attachment.write_text("x" * 2001, encoding="utf-8")
+        structured = dict(base, user_prompt=f"请分析 {attachment}")
+        context = __import__("session_bootstrap_hook").attachment_distill_context(structured)
+        assert "必须先走 QXEN" in context
+        targeted = dict(base, user_prompt=f"只读取 {attachment} 第 10 行")
+        targeted_context = __import__("session_bootstrap_hook").attachment_distill_context(targeted)
+        assert "允许确定性局部回源" in targeted_context
     structured = dict(
         base,
         user_prompt="核对 DOCX 文档描述是否与代码一致",
