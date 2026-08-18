@@ -63,6 +63,12 @@ STRICT_LONG_READ_PATTERNS = (
     r"sed\s+-n\s+['\"]?1,[0-9]{3,}p['\"]?\s+\S+",
     r"(?:cat|head\s+-[0-9]+)\s+\S+\.(md|txt|rst)(\s|$)",
 )
+STRUCTURED_AUDIT_HINTS = re.compile(
+    r"文档.{0,12}(核对|审查|一致)|核对.{0,12}(代码|文档)|"
+    r"(DOCX|docx).{0,20}(代码|一致|核对|审查)|"
+    r"(代码|配置).{0,12}(一致|描述|对照)",
+    re.I,
+)
 
 TRAIN_PATTERNS = (
     "mlx_lm.lora", "mlx_lm lora", "mlx_lm_lora",
@@ -123,6 +129,16 @@ def _is_safe_run(command: str) -> bool:
     return bool(re.match(r"^\s*(?:\S*/)?safe_run\.sh\s+--\b", command))
 
 
+def _structured_audit(payload: dict, command: str = "") -> bool:
+    """Allow deterministic structure/code comparison workflows to read raw structure."""
+    values = [command]
+    for key in ("task", "task_type", "user_prompt", "prompt", "content"):
+        value = payload.get(key)
+        if isinstance(value, str):
+            values.append(value)
+    return bool(STRUCTURED_AUDIT_HINTS.search("\n".join(values)))
+
+
 def main() -> int:
     stdin_raw = sys.stdin.read() if not sys.stdin.isatty() else ""
     try:
@@ -133,6 +149,7 @@ def main() -> int:
     tool_input = payload.get("tool_input") or {}
     cwd = payload.get("cwd") or os.getcwd()
     session_id = payload.get("session_id") or "unknown"
+    task_is_structured_audit = _structured_audit(payload)
 
     parts: list[str] = []
     updated_command: str | None = None
@@ -155,8 +172,9 @@ def main() -> int:
             info = file_size_info(fpath)
             if info:
                 n_lines, n_chars = info
-                if n_lines == -1 or n_lines > READ_LINE_LIMIT or \
-                        n_chars > READ_CHAR_LIMIT:
+                if (not task_is_structured_audit and
+                        (n_lines == -1 or n_lines > READ_LINE_LIMIT or
+                         n_chars > READ_CHAR_LIMIT)):
                     parts.append(
                         f"[force-distill] Read 守卫：{Path(fpath).name} "
                         f"约 {n_lines if n_lines > 0 else '?'} 行 / "
@@ -172,6 +190,7 @@ def main() -> int:
         cmd = ""
         if isinstance(tool_input, dict):
             cmd = str(tool_input.get("command") or tool_input.get("pattern") or "")
+        task_is_structured_audit = _structured_audit(payload, cmd)
         if cmd and STRICT_MODE and tool in ("Bash", "bash") and not _is_safe_run(cmd):
             updated_command = f"{ROOT}/scripts/safe_run.sh -- bash -lc {shlex.quote(cmd)}"
             parts.append(
@@ -191,8 +210,15 @@ def main() -> int:
             log_entry["action"] = "output_guard"
             log_entry["command"] = cmd[:120]
             if any(re.search(p, cmd) for p in STRICT_LONG_READ_PATTERNS):
-                long_read_deny = True
-                log_entry["action"] = "long_read_deny"
+                if task_is_structured_audit:
+                    log_entry["action"] = "structured_audit_allow"
+                    parts.append(
+                        "[force-distill] 结构化文档核对路径：允许确定性抽取标题/表格/数字，"
+                        "再用代码与审计记录核对；长叙述段落仍需 QXEN 蒸馏。"
+                    )
+                else:
+                    long_read_deny = True
+                    log_entry["action"] = "long_read_deny"
 
     # ---- 4. 无触发时静默（不注入噪音）----
     if not parts:

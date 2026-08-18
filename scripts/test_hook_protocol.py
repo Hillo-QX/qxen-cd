@@ -33,6 +33,15 @@ def main() -> int:
     denied_output = denied["hookSpecificOutput"]
     assert denied_output["permissionDecision"] == "deny"
     assert "qxen_cd_longtext_distill" in denied_output["permissionDecisionReason"]
+    structured = dict(
+        base,
+        user_prompt="核对 DOCX 文档描述是否与代码一致",
+        tool_name="Bash",
+        tool_input={"command": "sed -n '1,240p' /tmp/report.md"},
+    )
+    structured_output = run("force_distill.py", structured)
+    assert "permissionDecision" not in structured_output["hookSpecificOutput"]
+    assert "结构化文档核对路径" in structured_output["hookSpecificOutput"]["additionalContext"]
     assert run("session_end_hook.py", base)["hookSpecificOutput"]["hookEventName"] == "SessionEnd"
     print("test_hook_protocol: PASS")
     return 0
