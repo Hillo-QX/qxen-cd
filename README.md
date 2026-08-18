@@ -1,11 +1,11 @@
-# 任务调度器（DeepSeek Dispatcher Infrastructure）— QXEN-CD Codex Stable 0.2.0
+# 任务调度器（Dispatcher Infrastructure）— QXEN-CD Codex Stable 0.2.0
 
 > **QXEN-CD 方法论状态：R1.9 CLOSED（2026-08-13）**
 > 冻结资产 28 项 SHA256 全 OK、79 条终态回归 78/79 PASS（唯一失败 RV17-E007 为
 > 已决策豁免的已知限制）。详见 [`reports/r1.9/closure_report.md`](reports/r1.9/closure_report.md)
 > 与 [`CLOSED.md`](CLOSED.md)。
 
-这是一个**通用任务调度基础设施**，不是任何金融项目的一部分。
+这是一个**通用任务调度基础设施**，不是任何项目的一部分。
 它与业务项目完全解耦，可以服务任何 target workspace。
 
 ## Stable release
