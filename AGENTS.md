@@ -99,7 +99,7 @@ checkpoint 和长日志；仍不可用时按同样顺序调用 `local_summarize_
 - Kimi-Expert/DeepSeek 是可选咨询源，不是继续工作的前置条件。GPT 可在不调用专家的情况下继续 working loop；UNCERTAIN 时优先做安全验证或暂停危险动作。
 - 自动 loop 可以运行 Gate，并在 Gate PASS 后自动晋级；Gate FAIL 时进入 GPT 自主诊断/修复 loop，不启动下一阶段，不因缺少专家意见而停止。
 - 主 Agent 重新分配任务后才能恢复训练；不得无限 resume 失败 adapter，也不得在训练与模型评估之间并行争抢内存。
-- Codex 回复选择性蒸馏（v2）：只有大于 4096 UTF-8 字节的回复进入 `调度状态/response_capsules/`；低于门槛时即使包含交接/状态/Gate/审计等复用词也走 KEEP_RAW_REUSABLE，高风险短回复走 KEEP_RAW_HIGH_RISK。UserPromptSubmit 从 Codex rollout 捕获上一轮 final answer 并按内容哈希幂等入队，SessionEnd 只作关闭兜底。主 Agent 直接调用 QXEN-CD MCP，hook 不加载模型；胶囊必须保留 raw_pointer、source=codex_response、authority=advisory_only、任务/session 标识、蒸馏结果回写路径和过期信息。
+- Codex 回复选择性蒸馏（v2）：只有大于 2000 UTF-8 字节的回复进入 `调度状态/response_capsules/`；低于或等于门槛时即使包含交接/状态/Gate/审计等复用词也走 KEEP_RAW_REUSABLE，高风险短回复走 KEEP_RAW_HIGH_RISK。UserPromptSubmit 从 Codex rollout 捕获上一轮 final answer 并按内容哈希幂等入队，SessionEnd 只作关闭兜底。主 Agent 直接调用 QXEN-CD MCP，hook 不加载模型；胶囊必须保留 raw_pointer、source=codex_response、authority=advisory_only、任务/session 标识、蒸馏结果回写路径和过期信息。
 - 回复胶囊处理顺序：先 `response_capsule.py --claim --capsule <envelope.json>`，再调用 QXEN-CD；成功用 `--complete` 回写，失败用 `--fail --reason ...` 回写，最多两次尝试。只有 `PENDING_QXEN` 胶囊进入 UserPromptSubmit 提示；历史 raw_bypass 由 SessionStart 基线隔离，不参与当前会话 FAIL。
 - P1 触发规则：UserPromptSubmit 仅处理同一 session 的 PENDING 胶囊；相同 `task_id` 或关键词重叠 >=2 时直接提示，`context_pressure >= 0.80` 时也必须是 24 小时内且关键词重叠 >=1 的弱相关胶囊。无关任务不调用 QXEN、不提示胶囊。相关性与压力判断必须是确定性的，禁止在 hook 中引入模型调用。
 - context pressure 使用 Codex rollout 最新 `token_count.info.last_token_usage.input_tokens` 和 `model_context_window`；累计 `total_token_usage` 只作审计，不参与触发。rollout 无 usage 时才使用默认预算，可通过 `CODEX_CONTEXT_WINDOW_TOKENS` 覆盖。P1 事件写入 `日志/p1_trigger_events.jsonl`。

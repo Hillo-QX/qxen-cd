@@ -14,6 +14,8 @@ import response_capsule as rc
 def main() -> int:
     assert rc.route("短答")["decision"] == "KEEP_RAW"
     assert rc.route("交接状态", "普通任务")["decision"] == "KEEP_RAW_REUSABLE"
+    assert rc.route("x" * 2000)["decision"] == "KEEP_RAW"
+    assert rc.route("x" * 2001)["decision"] == "QUEUE_QXEN"
     assert rc.route("结论", "金融回测")["risk"] == "high"
     assert rc.route("结论", "金融回测")["decision"] == "KEEP_RAW_HIGH_RISK"
 

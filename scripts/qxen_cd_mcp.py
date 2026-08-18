@@ -639,9 +639,10 @@ def qxen_cd_guard(raw: str, prompt: str = "") -> dict:
 async def _qxen_generate(source: str, evidence: str, task: str = "evidence_compression",
                            max_tokens: int = 1000, work_item_id: str = "",
                            task_id: str = "", workspace: str = "", session_id: str = "",
-                           capsule_id: str = "") -> dict:
+                           capsule_id: str = "", raw_source_chars: int | None = None) -> dict:
     """Private model-generation primitive used only by longtext distillation."""
     started = time.perf_counter()
+    audit_source_chars = raw_source_chars if raw_source_chars is not None else len(source) + len(evidence)
     model_called = False
     callback_latency_s = 0.0
     claim_update = _capsule_update(capsule_id, "claim", worker_id=f"qxen-mcp-{os.getpid()}")
@@ -681,7 +682,7 @@ async def _qxen_generate(source: str, evidence: str, task: str = "evidence_compr
                model_called=model_called, capsule_id=capsule_id,
                capsule_status_error=capsule_status_error)
         record_processing(work_item_id=work_item_id, task_id=task_id, task=task,
-                          source_chars=len(source) + len(evidence), baseline_scope="source_plus_evidence",
+                          source_chars=audit_source_chars, baseline_scope="source_plus_evidence",
                           pipeline="longtext_internal_generate", guard_status="FALLBACK",
                           fallback=True, workspace=workspace, session_id=session_id,
                           path=AUDIT_LOG)
@@ -703,7 +704,7 @@ async def _qxen_generate(source: str, evidence: str, task: str = "evidence_compr
                model_called=model_called, capsule_id=capsule_id,
                capsule_status_error=capsule_status_error)
         record_processing(work_item_id=work_item_id, task_id=task_id, task=task,
-                          source_chars=len(source) + len(evidence), baseline_scope="source_plus_evidence",
+                          source_chars=audit_source_chars, baseline_scope="source_plus_evidence",
                           pipeline="longtext_internal_generate", guard_status="FALLBACK",
                           fallback=True, workspace=workspace, session_id=session_id,
                           path=AUDIT_LOG)
@@ -730,7 +731,7 @@ async def _qxen_generate(source: str, evidence: str, task: str = "evidence_compr
             result["capsule_status_error"] = capsule_status_error
         append_audit(result, ROOT / "logs" / "qxen_cd_runtime.jsonl")
         record_processing(work_item_id=work_item_id, task_id=task_id, task=task,
-                          source_chars=len(source) + len(evidence), qxen_output_chars=_gpt_payload_chars(result),
+                          source_chars=audit_source_chars, qxen_output_chars=_gpt_payload_chars(result),
                           baseline_scope="source_plus_evidence", pipeline="longtext_internal_generate",
                           capsule_id=result.get("capsule_id", ""),
                           guard_status=result.get("guard_status", ""),
@@ -762,13 +763,22 @@ async def _qxen_generate(source: str, evidence: str, task: str = "evidence_compr
                model_called=model_called, capsule_id=capsule_id,
                capsule_status_error=capsule_status_error)
         record_processing(work_item_id=work_item_id, task_id=task_id, task=task,
-                          source_chars=len(source) + len(evidence), baseline_scope="source_plus_evidence",
+                          source_chars=audit_source_chars, baseline_scope="source_plus_evidence",
                           pipeline="longtext_internal_generate", guard_status="FALLBACK",
                           fallback=True, capsule_id="", workspace=workspace, session_id=session_id,
                           path=AUDIT_LOG)
         _ensure_business_audit(work_item_id, task, source, evidence, result,
                                workspace, session_id)
         return result
+
+
+def split_longtext_chunks(text: str, max_chars: int = 6000) -> list[str]:
+    """Split source text without dropping whitespace or changing its content."""
+    if max_chars <= 0:
+        raise ValueError("max_chars must be positive")
+    if len(text) <= max_chars:
+        return [text]
+    return [text[start:start + max_chars] for start in range(0, len(text), max_chars)]
 
 
 @mcp.tool()
@@ -1112,27 +1122,7 @@ async def qxen_cd_longtext_distill(source: str, evidence: str = "",
         )
         record_observable_path(payload)
         return finish(payload)
-    paragraphs = [p.strip() for p in evidence.replace("\r", "\n").split("\n") if p.strip()]
-    chunks: list[str] = []
-    current: list[str] = []
-    current_chars = 0
-    for paragraph in paragraphs:
-        if len(paragraph) > max_chars:
-            if current:
-                chunks.append("\n".join(current))
-                current, current_chars = [], 0
-            chunks.extend(
-                paragraph[start:start + max_chars]
-                for start in range(0, len(paragraph), max_chars)
-            )
-            continue
-        if current and current_chars + len(paragraph) + 1 > max_chars:
-            chunks.append("\n".join(current))
-            current, current_chars = [], 0
-        current.append(paragraph)
-        current_chars += len(paragraph) + 1
-    if current:
-        chunks.append("\n".join(current))
+    chunks = split_longtext_chunks(evidence, max_chars)
     results = []
     preflight_summary = []
     for index, chunk in enumerate(chunks, 1):
@@ -1144,13 +1134,19 @@ async def qxen_cd_longtext_distill(source: str, evidence: str = "",
             task="qxen_longtext_distill", max_tokens=max_tokens,
             work_item_id=f"{work_item_id}:chunk{index:02d}" if work_item_id else "",
             task_id=task_id, workspace=workspace, session_id=session_id,
+            raw_source_chars=len(chunk),
         )
+        chunk_result["raw_chunk_chars"] = len(chunk)
+        chunk_result["model_input_chars"] = len(model_evidence(chunk, context))
+        chunk_result["raw_chunk_index"] = index
+        chunk_result["raw_chunk_count"] = len(chunks)
         results.append(attach_source_contract(chunk_result, f"chunk:{index}/{len(chunks)}"))
     combined = compact_consumption_payload(
         results,
         {
             "chunking": {"mode": "deterministic_paragraph", "max_chars": max_chars,
-                         "chunks": len(chunks), "preflight": preflight_summary},
+                         "chunks": len(chunks), "raw_chunk_chars": [len(chunk) for chunk in chunks],
+                         "preflight": preflight_summary},
             "source": source,
             "source_chars": len(evidence),
             "pdf_preflight": pdf_preflight,

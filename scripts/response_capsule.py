@@ -23,7 +23,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 QUEUE = ROOT / "调度状态" / "response_capsules"
 P1_LOG = ROOT / "日志" / "p1_trigger_events.jsonl"
-MIN_REUSABLE_BYTES = 4096
+MIN_REUSABLE_BYTES = 2000
 MAX_ATTEMPTS = 2
 DEFAULT_LEASE_SECONDS = 30 * 60
 PRESSURE_MAX_AGE_SECONDS = 24 * 60 * 60

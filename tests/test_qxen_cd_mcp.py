@@ -10,12 +10,16 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "scripts"))
 
 from mcp import ClientSession, StdioServerParameters  # noqa: E402
 from mcp.client.stdio import stdio_client  # noqa: E402
+from qxen_cd_mcp import split_longtext_chunks  # noqa: E402
 
-SERVER = ROOT / "qxen_cd_mcp.py"
+SERVER = ROOT / "scripts" / "qxen_cd_mcp.py"
 PYTHON = ROOT / "venv" / "bin" / "python"
+if not PYTHON.is_file():
+    PYTHON = Path(sys.executable)
 
 
 async def call(name: str, args: dict | None = None):
@@ -29,6 +33,12 @@ async def call(name: str, args: dict | None = None):
 
 
 async def main() -> int:
+    text = "x" * 24754
+    chunks = split_longtext_chunks(text, 6000)
+    assert len(chunks) == 5
+    assert max(map(len, chunks)) <= 6000
+    assert "".join(chunks) == text
+
     params = StdioServerParameters(command=str(PYTHON), args=[str(SERVER)])
     async with stdio_client(params) as (reader, writer):
         async with ClientSession(reader, writer) as session:
