@@ -23,6 +23,13 @@ long text -> provider (advisory) -> lightweight validation -> ADVISORY capsule
           -> INJECT_QXEN only when final_gpt_payload_chars/direct_source_chars < 1
 ```
 
+Local `source_path` inputs are extracted deterministically by file type before
+long-text chunking: DOCX/PPTX/XLSX use OOXML structure, JSON/JSONL/CSV/TSV/TOML
+use structured parsing or row formatting, YAML preserves source text, and PDF
+uses page-marked extraction. Legacy XLS is not decoded as UTF-8; use a
+dedicated spreadsheet reader. Python and XLSX/XLS remain deterministic
+host-side exemptions from whole-file QXEN routing.
+
 High-risk evidence tasks use the full deterministic Guard. Long-text advisory
 capsules do not require `key_evidence`; missing that optional field does not
 create a false fallback. The public package remains provider-neutral and does

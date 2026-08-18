@@ -33,6 +33,18 @@ Context Burden gate
 main-agent context and final decision
 ```
 
+### Deterministic source extraction
+
+The MCP reads local files by `source_path`, outside the host model context.
+The shared extractor routes each format to its native representation: DOCX
+paragraphs/tables, PPTX slide text, and XLSX worksheet rows use OOXML parsing;
+JSON/JSONL/CSV/TSV/TOML use structured parsing or row formatting; YAML is
+preserved as source text. Legacy `.xls` is treated as binary and requires a
+dedicated spreadsheet reader. Python source and XLSX/XLS remain deterministic
+host-side paths rather than whole-file QXEN long-text inputs. This prevents
+binary ZIP/compound-document bytes from being decoded as UTF-8, which can
+inflate input and cause avoidable chunking or MCP timeouts.
+
 The full Guard is intentionally conservative. It accepts only evidence sources
 that can be matched to the material supplied in the prompt. Formatting-only
 differences (Unicode normalization, whitespace, and dash variants) may be

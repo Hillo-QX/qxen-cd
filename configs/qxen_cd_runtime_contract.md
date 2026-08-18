@@ -101,7 +101,7 @@ GPT 主 Agent 负责最终解释与行动。
 # Long-text distill contract
 
 - MCP entrypoint: `qxen_cd_longtext_distill`
-- Local-file entry: pass `source_path` with empty `evidence`; the MCP reads and chunks the source outside GPT context. Inline `evidence` remains a compatibility path.
+- Local-file entry: pass `source_path` with empty `evidence`; the MCP reads and chunks the source outside GPT context. Structured inputs use deterministic type-aware extraction: `.docx`/`.pptx`/`.xlsx` use OOXML paragraph/slide/table extraction, `.json`/`.jsonl`/`.csv`/`.tsv`/`.toml` use structured parsing or row formatting, `.yaml/.yml` preserve source text, `.pdf` uses page-marked extraction, and plain text uses UTF-8. `.xls` is binary and must use a dedicated spreadsheet reader; it is never decoded as UTF-8. Inline `evidence` remains a compatibility path.
 - 2,000–4,000 Chinese characters: safe operating zone.
 - 4,000–6,000: allowed upper zone; record `chunk_chars`.
 - Over 6,000: deterministic paragraph-aware chunking is mandatory; each chunk is processed independently.
@@ -113,6 +113,7 @@ GPT 主 Agent 负责最终解释与行动。
 - Required source contract: default payload keeps `raw_pointer` and `source_locator.sha256`; full `consumption_policy.mode=capsule_first_targeted_retrieval` is contract-level/debug metadata, not repeated in every default GPT payload. Capsules are task-scoped functional summaries, never source-equivalent replacements; exact values/quotes, code edits, conflicts, missing evidence, and high-risk decisions require targeted source retrieval.
 - Injection gate: `accepted_capsules > 0` and `final_gpt_payload_chars / direct_source_chars < 1`; otherwise return `BYPASS_QXEN` and do not retry the same capsule as a model failure.
 - Targeted source retrieval uses deterministic `qxen_cd_source_slice` with either a line range or query plus optional SHA-256 verification; it returns only a bounded verbatim excerpt and never loads a model.
+- `qxen_cd_source_slice` uses the same file-type extraction contract as longtext for all supported structured formats; it must not decode OOXML or legacy `.xls` binaries as UTF-8.
 - PDF/table/numeric preflight is local/default-hidden evidence. It may be returned only as compact debug metadata or when the task explicitly asks for table/numeric QA; full coordinate rows remain local evidence only.
 - Cross-chunk merge/deduplication/budget trimming belongs to `qxen_cd_compact`.
 - Codex response capsules require more than 4,096 UTF-8 bytes before QXEN routing;

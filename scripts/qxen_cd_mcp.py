@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "scripts"))
 from qxen_cd_compact import compact  # noqa: E402
 from qxen_pdf_preflight import extract_pdf_text, preflight_pdf  # noqa: E402
+from qxen_source_extract import extract_source_text  # noqa: E402
 from qxen_cd_audit import (  # noqa: E402
     DEFAULT_LOG as AUDIT_LOG,
     load as load_audit,
@@ -77,9 +78,12 @@ def _audit_text_input(inline_text: str, source_path: str = "") -> tuple[str, dic
     if not path.is_file():
         raise FileNotFoundError(path)
     raw = path.read_bytes()
-    return raw.decode("utf-8", errors="replace"), {
+    suffix = path.suffix.lower()
+    text, extraction = extract_source_text(path)
+    return text, {
         "input_mode": "local_path", "source_path": str(path),
         "source_sha256": hashlib.sha256(raw).hexdigest(), "source_bytes": len(raw),
+        "content_chars": len(text), "extraction": extraction,
     }
 
 
@@ -834,8 +838,7 @@ async def qxen_cd_longtext_distill(source: str, evidence: str = "",
                 evidence = extract_pdf_text(resolved_source)
                 extraction = "pdfplumber_page_marked_text"
             else:
-                evidence = raw_bytes.decode("utf-8", errors="replace")
-                extraction = "utf8_text"
+                evidence, extraction = extract_source_text(resolved_source)
             input_mode = "local_path"
             source_locator = {
                 "path": str(resolved_source.resolve()),
@@ -1206,8 +1209,7 @@ def qxen_cd_source_slice(raw_pointer: str, expected_sha256: str = "",
             text = extract_pdf_text(path)
             extraction = "pdfplumber_page_marked_text"
         else:
-            text = raw.decode("utf-8", errors="replace")
-            extraction = "utf8_text"
+            text, extraction = extract_source_text(path)
         lines = text.splitlines()
         if query:
             needle = query.casefold()
