@@ -4,6 +4,14 @@
 
 QXEN-CD 是 GPT 主 Agent 的证据处理 sub-agent，不是最终裁决器。
 
+## 后端与健康状态口径
+
+生产推理后端是本机 `mlx-shared`（Qwen MLX 4-bit + QXEN LoRA），不依赖
+Ollama。Ollama 只作为 legacy/optional 兼容状态保留。Ollama `不可达`
+不得解释为 QXEN-CD 整体不可用；健康判断必须以 QXEN-CD MCP、MLX 模型资产、
+Guard 和 Compactor 为准。长文调用超过工具层时限时，应记录为
+`longtext_timeout`，不能改写成 `health_failure`。
+
 ## 交给 QXEN-CD 的任务
 
 - 判断材料与当前任务的初步相关性；

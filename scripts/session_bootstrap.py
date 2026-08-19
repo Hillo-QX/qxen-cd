@@ -237,6 +237,16 @@ def ollama_status() -> str:
         return "不可达"
 
 
+def local_inference_status() -> str:
+    """Report the active MLX backend; Ollama is legacy-only telemetry."""
+    root = Path(__file__).resolve().parents[1]
+    model = root / "models" / "qwen3.5-9b-mlx-4bit"
+    adapter = root / "models" / "qxen_joint_v1_clean_full"
+    if model.is_dir() and adapter.is_dir():
+        return f"OK(backend=mlx-shared, model={model.name}, adapter={adapter.name})"
+    return "不可用（MLX 共享后端）"
+
+
 def latest_state_summary(workspace: Path, pattern: str) -> str:
     files = sorted(glob.glob(str(workspace / pattern)),
                    key=lambda p: os.path.getmtime(p), reverse=True)
@@ -295,7 +305,9 @@ def build_capsule(workspace: Path, cfg: dict, session_id: str, task: str = "",
         ])
         return "\n".join(parts)
 
-    parts.append("Ollama: " + ollama_status())
+    parts.append("QXEN-CD/MLX: " + local_inference_status())
+    parts.append("LocalQwen: backend=mlx-shared（不依赖 Ollama）")
+    parts.append("Ollama（legacy_optional）: " + ollama_status())
 
     handoff = workspace / cfg["handoff_doc"]
     lines = filtered_handoff(target, handoff, task)

@@ -57,6 +57,10 @@ from qxen_cd_runtime import (  # noqa: E402
 from qxen_v1_guard import guard_text  # noqa: E402
 from codex_workflow_bootstrap import discover as discover_workflow  # noqa: E402
 import local_qwen_mcp as local_qwen  # noqa: E402
+try:
+    from mlx_shared_backend import health as _shared_mlx_health  # noqa: E402
+except ImportError:
+    _shared_mlx_health = lambda: {"status": "UNKNOWN", "backend": "mlx-shared"}
 DETECTION_TASKS_PATH = ROOT / "configs" / "qxen_detection_tasks_v1.json"
 
 MCP_LOG = Path(os.environ.get("QXEN_CD_MCP_LOG", str(ROOT / "日志" / "qxen_cd_mcp.log")))
@@ -206,6 +210,15 @@ async def qxen_cd_health() -> dict:
         "guard": str(guard_path),
         "compactor": str(compact_path),
         "model_assets_present": BASE_MODEL.is_dir() and ADAPTER.is_dir(),
+        "backend": "mlx-shared",
+        "ollama_required": False,
+        "inference_health": _shared_mlx_health(),
+        "status_semantics": {
+            "primary": "QXEN-CD/MLX",
+            "local_qwen": "mlx-shared",
+            "ollama": "legacy_optional",
+            "ollama_unreachable_does_not_mean_qxen_down": True,
+        },
         "mcp_log": str(MCP_LOG),
         "time": _now(),
     }

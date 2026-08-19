@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-LocalQwen MCP Server
+LocalQwen MCP Server (shared MLX backend)
 ====================
 
-v2 架构的"本地蒸馏器官"：把本地 qwen3.5:9b（ollama，零额度）包装成
+v3 架构的"本地蒸馏器官"：把本地 Qwen MLX + QXEN LoRA 包装成
 一组单轮、窄 prompt、schema 校验的 MCP 工具，供主 Agent 调用。
 
 设计原则：
@@ -16,8 +16,8 @@ v2 架构的"本地蒸馏器官"：把本地 qwen3.5:9b（ollama，零额度）�
       （工具名 / 输入字节 / 输出行数 / 重试次数 / 耗时 / 状态）。
 
 环境变量：
-    LOCAL_QWEN_BASE_URL   ollama 地址（默认 http://localhost:11434）
-    LOCAL_QWEN_MODEL      模型名（默认 qwen3.5:9b；QXEN adapter 练出后在此替换）
+    QXEN_BASE_MODEL       MLX 基础模型目录
+    QXEN_ADAPTER          QXEN LoRA 目录
     LOCAL_QWEN_TIMEOUT    单次调用超时秒数（默认 120）
     LOCAL_QWEN_LOG        审计日志路径（默认 <项目根>/日志/local_qwen.log）
 
@@ -34,13 +34,12 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-import httpx
+from mlx_shared_backend import generate as mlx_generate, health as mlx_health
 from mcp.server.fastmcp import FastMCP
 
 ROOT = Path(__file__).resolve().parent
 
-BASE_URL = os.environ.get("LOCAL_QWEN_BASE_URL", "http://localhost:11434").rstrip("/")
-MODEL = os.environ.get("LOCAL_QWEN_MODEL", "qwen3.5:9b")
+MODEL = os.environ.get("LOCAL_QWEN_MODEL", "qwen3.5-9b-mlx-4bit+qxen_joint_v1_clean_full")
 TIMEOUT = float(os.environ.get("LOCAL_QWEN_TIMEOUT", "120"))
 LOG_PATH = Path(os.environ.get("LOCAL_QWEN_LOG", str(ROOT / "日志" / "local_qwen.log")))
 HEALTH_CACHE_PATH = Path(os.environ.get(
@@ -144,7 +143,7 @@ def _load_health_cache() -> dict | None:
         cache = json.loads(HEALTH_CACHE_PATH.read_text(encoding="utf-8"))
         if cache.get("status") != "OK":
             return None
-        if cache.get("base_url") != BASE_URL or cache.get("model") != MODEL:
+        if cache.get("backend") != "mlx-shared" or cache.get("model") != MODEL:
             return None
         if time.time() - float(cache.get("checked_at", 0)) > HEALTH_CACHE_TTL:
             return None
@@ -163,7 +162,7 @@ def _save_health_cache(result: dict) -> None:
         HEALTH_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
         payload = {
             "status": "OK", "checked_at": time.time(),
-            "base_url": BASE_URL, "model": MODEL, "result": result,
+            "backend": "mlx-shared", "model": MODEL, "result": result,
         }
         HEALTH_CACHE_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     except OSError:
@@ -179,21 +178,12 @@ def _chat(prompt: str, num_predict: int) -> str:
 
     返回模型文本。网络错误 / HTTP 错误 / 空响应一律抛 QwenError。
     """
-    payload = {
-        "model": MODEL,
-        "messages": [{"role": "user", "content": prompt}],
-        "stream": False,
-        "think": False,
-        "options": {"temperature": 0.1, "num_predict": num_predict},
-    }
     try:
-        resp = httpx.post(f"{BASE_URL}/api/chat", json=payload, timeout=TIMEOUT)
-        resp.raise_for_status()
-        text = (resp.json().get("message") or {}).get("content", "")
-    except Exception as e:  # httpx 错误 + JSON 结构错误统一归一
-        raise QwenError(f"ollama call failed: {e}") from e
+        text = mlx_generate(prompt, num_predict)["text"]
+    except Exception as e:  # MLX runtime errors are normalized below
+        raise QwenError(f"mlx call failed: {e}") from e
     if not text.strip():
-        raise QwenError("empty response from ollama")
+        raise QwenError("empty response from mlx")
     return text.strip()
 
 
@@ -354,7 +344,7 @@ def _parse_monitor(out: str) -> dict:
 # ---------------------------------------------------------------- 工具
 
 async def _local_health_unlocked(force: bool = False) -> dict:
-    """LocalQwen 健康检查：ollama 可达 + 模型存在 + 生成探针（1 token）。
+    """LocalQwen 健康检查：MLX 资产存在，不访问 Ollama。
 
     不经过 Dispatcher，不调任何远程 API。会话开始时用于确认本地蒸馏管道已注入。
     """
@@ -366,21 +356,18 @@ async def _local_health_unlocked(force: bool = False) -> dict:
                 "model": MODEL, **_audit_fields("local_health")})
         return cached
     try:
-        tags = httpx.get(f"{BASE_URL}/api/tags", timeout=10).json()
-        names = [m.get("name", "") for m in tags.get("models", [])]
-        if not any(n == MODEL or n.startswith(MODEL.split(":")[0]) for n in names):
-            raise QwenError(f"model {MODEL} not in ollama tags: {names}")
-        probe = _chat("只回复一个字：好", num_predict=8)
+        base = mlx_health()
+        if base["status"] != "OK":
+            raise QwenError("MLX model or adapter missing")
         result = {
             "server": "local-qwen",
+            "backend": "mlx-shared",
             "model": MODEL,
-            "think": False,
-            "probe": probe[:20],
             "log": str(LOG_PATH),
             "latency_s": round(time.time() - t0, 2),
         }
         _audit({"time": _now(), "tool": "local_health", "status": "OK",
-                "latency_s": result["latency_s"], "probe": result["probe"],
+                "latency_s": result["latency_s"], "backend": "mlx-shared",
                 "model": MODEL, **_audit_fields("local_health")})
         _save_health_cache(result)
         return {"status": "OK", "cached": False,

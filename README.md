@@ -89,7 +89,7 @@ deepseek-v4-flash  = Agent（唯一的 agent：面对用户、跑循环、做验
   ├─ MCP: Dispatcher（deepseek mode / kimi mode，不变）
   │    dispatcher_health / dispatch_next_task / request_decision
   │
-  └─ MCP: LocalQwen（local_qwen_mcp.py → ollama qwen3.5:9b，think:false，零额度）
+  └─ MCP: LocalQwen（共享 mlx-shared：Qwen MLX 4-bit + QXEN LoRA；不依赖 Ollama）
        local_health / local_distill(source_path) / local_summarize_files(paths)
        local_extract_failure(log_path) / local_classify
        每个工具 = 单轮窄 prompt + 输出 schema 硬限长 + 失败重试 1 次 + FALLBACK 降级
@@ -430,7 +430,8 @@ User
 ```
 
 额度说明：发往 `managed:kimi-code`（K3）的请求计入订阅周额度与 5 小时限流窗；
-本地 Qwen 请求发往 Ollama，不经过 Kimi 服务器，零额度消耗。
+本地 Qwen 生产请求走共享 `mlx-shared`，不经过 Ollama 或 Kimi 服务器，零额度消耗。
+Ollama 仅保留为 legacy/optional 兼容状态；Ollama 不可达不等于 QXEN-CD 不可用。
 
 决策层调用实现（`kimi_dispatcher_mcp.py` 的 `call_kimi`，B 路线同样适用）：
 

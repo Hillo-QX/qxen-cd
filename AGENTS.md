@@ -24,7 +24,9 @@ checkpoint 和长日志；仍不可用时按同样顺序调用 `local_summarize_
 - Qwen3.5 同时是被训练模型；MLX 训练权重与 Ollama 蒸馏服务不能在训练期间无保护地并行争抢 Metal 内存。
 - LocalQwen 的输出是候选、证据压缩或结构审查建议，不是最终决策；GPT 必须审核输出，回测/IC/PIT/去重/入库仍由确定性代码和主 Agent 最终判断。
 - LocalQwen 可辅助生成候选、表达式初审和失败聚类；Python 引擎继续负责回测、IC、成本、PIT、去重和入库；GPT 主 Agent 最终决定是否调整搜索策略。
-- LocalQwen health 采用 15 分钟 OK 缓存；会话首次、缓存过期、模型/服务地址变化或出现明确异常时才重新探测，不重复消耗 Ollama 探针。
+- LocalQwen 生产后端为共享 `mlx-shared`（Qwen MLX 4-bit + QXEN LoRA），不依赖 Ollama；
+  health 采用 15 分钟 OK 缓存。Ollama 仅是 legacy/optional 兼容状态，`不可达`
+  不代表 QXEN-CD 或 LocalQwen 整体故障。
 - **训练保护模式**：只要存在 MLX/LoRA 训练进程，暂不调用任何 `local_*` / LocalQwen MCP，也不运行会加载本地 Qwen 的推理、Gate 或诊断；改用 shell 做确定性监控。训练进程结束并完成 checkpoint/日志核对后，才恢复 LocalQwen 调用。
 - DeepSeek 若接入，只作为显式备用决策层，不得替代 GPT 主循环。
 - codex 侧已挂 `deepseek-dispatcher` MCP（`dispatcher_health` / `dispatch_next_task` / `request_decision`），它是 GPT 主 Agent 的**备用决策源**：仅在主循环自修连续失败（attempt #2 FAIL 后）或需高层决策审批时调用，不作为每次 dispatch 的主通道；主循环仍由 GPT-5.6 Luna 自己承担。

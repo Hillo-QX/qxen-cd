@@ -3,7 +3,7 @@
 """监控语义层 CLI bridge —— 供 shell 巡检脚本（watch_r3a_v2.sh）调用。
 
 把「异常摘要 + 日志末尾片段」蒸馏成可恢复性判断 + 失败聚类 + 告警胶囊，
-复用 local_qwen_mcp 的 ollama 调用（_chat / _monitor_prompt / _parse_monitor）
+复用 local_qwen_mcp 的共享 MLX 调用（_chat / _monitor_prompt / _parse_monitor）
 与审计（_audit），保证 prompt 与 schema 与 MCP 工具 local_monitor_analyze 完全一致。
 
 设计：shell 负责采数 + 硬阈值判定（确定性数字），qwen 只做语义层。
