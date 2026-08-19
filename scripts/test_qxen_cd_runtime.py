@@ -54,6 +54,13 @@ def main() -> int:
     check(faithful["guard_status"] == "ADVISORY", "faithful task uses lightweight guard")
     longtext = _faithful_result('{"summary":[{"text":"2020Q4银行家问卷","source":"doc.pdf#p1"}]}', "doc.pdf#p1", "qxen_longtext_distill")
     check(longtext["guard_status"] == "ADVISORY", "longtext task uses lightweight guard")
+    longtext_text = _faithful_result(
+        '{"summary":"讲义系统介绍对价的成立、过去对价、既存义务及其例外。","omitted":[],"uncertainty":[]}',
+        "docx#chunk01", "qxen_longtext_distill",
+    )
+    check(longtext_text["guard_status"] == "ADVISORY", "longtext accepts faithful text summary")
+    check(isinstance(longtext_text["gpt_context"]["capsule"]["summary"], str),
+          "longtext text summary remains a string")
     check(_faithful_result('{"relevance":"high"}', "doc.pdf#p1", "faithful_chunk_distill")["guard_status"] == "FALLBACK", "faithful malformed summary rejected")
     check(len(WORK_ROUTING) == 9, "work type routing incomplete")
     check(route_backend("backtest_result_organize")["backend"] == "qxen-cd", "backtest not QXEN primary")

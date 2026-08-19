@@ -107,6 +107,11 @@ GPT 主 Agent 负责最终解释与行动。
 - Over 6,000: deterministic paragraph-aware chunking is mandatory; each chunk is processed independently.
 - Under 2,000: prefer deterministic extraction; LocalQwen is not the general long-text backend.
 - Long-text output is `ADVISORY`, never a final fact or Gate decision.
+- Long-text `summary` may be either a faithful paragraph string (preferred for
+  DOCX/PDF/report material) or the legacy array of `{text, source}` fact items.
+  In string mode, provenance is supplied by the outer `raw_pointer` and
+  `source_locator.sha256`; the model is not required to reproduce filenames or
+  page suffixes.
 - `key_evidence` is optional for long-text/advisory outputs; its absence must not produce `key_evidence_missing_or_invalid` or a hard fallback.
 - Guard mode is task-scoped: long-text uses `lightweight_json`; high-risk evidence uses `full_deterministic`.
 - Required audit fields: `pipeline=longtext_distill`, `chunk_count`, `chunk_chars`, `authority=advisory_only`, `requires_gpt_review=false`, `review_policy=conditional`, and `context_burden.ratio`.
