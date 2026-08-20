@@ -75,7 +75,12 @@ def attachment_distill_context(payload):
             continue
         if size <= LONGTEXT_BYTES:
             continue
-        if targeted:
+        if path.name == "SKILL.md":
+            route = (
+                "SKILL.md 指令文件必须按 Codex skill 规则完整读取；"
+                "不使用 QXEN longtext 替代原文，QXEN 只可用于事后交接/摘要胶囊"
+            )
+        elif targeted:
             route = "允许确定性局部回源（仅按明确行号/关键词），不触发整附件 QXEN"
         elif analysis:
             route = "必须先调用 qxen_cd_longtext_distill，传 source_path；仅明确行号/关键词局部回源可绕过"

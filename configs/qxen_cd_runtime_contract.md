@@ -66,6 +66,10 @@ Guard 和 Compactor 为准。长文调用超过工具层时限时，应记录为
 `98→205`（无收益）与 `6000→1042`（有收益），线性 break-even 约 `222.68` 字符，生产保守取
 `220`。直通块不计入 `distilled_chars`，必须单独记录 `passthrough_chars`、
 `passthrough_chunks`、`raw_passthrough_max_chars` 和阈值依据。
+`SKILL.md` 是 Codex skill 指令文件，必须由主 Agent 按 skill 规则完整读取；默认不得用
+`qxen_cd_longtext_distill` 替代原文。若调用 longtext 入口传入 `source_path` 且目标为
+`SKILL.md`，必须返回 `BYPASS_QXEN`，`bypass_reason=skill_instruction_requires_verbatim_read`，
+并记录为无模型调用。QXEN 仅可用于事后交接/摘要胶囊。
 
 可观测 token 口径为：MCP 路径读入字符 − 最终进入 GPT 的 payload 字符 − 后续
 `qxen_cd_source_slice` 回源字符。该值由 `observable_path_accounting` 报告；
@@ -116,6 +120,7 @@ GPT 主 Agent 负责最终解释与行动。
 
 - MCP entrypoint: `qxen_cd_longtext_distill`
 - Local-file entry: pass `source_path` with empty `evidence`; the MCP reads and chunks the source outside GPT context. Structured inputs use deterministic type-aware extraction: `.docx`/`.pptx`/`.xlsx` use OOXML paragraph/slide/table extraction, `.json`/`.jsonl`/`.csv`/`.tsv`/`.toml` use structured parsing or row formatting, `.yaml/.yml` preserve source text, `.pdf` uses page-marked extraction, and plain text uses UTF-8. `.xls` is binary and must use a dedicated spreadsheet reader; it is never decoded as UTF-8. Inline `evidence` remains a compatibility path.
+- `SKILL.md` exception: Codex skill instruction files require verbatim host reading and must default to `BYPASS_QXEN` with reason `skill_instruction_requires_verbatim_read`; QXEN may only summarize already-consumed conclusions for handoff.
 - 2,000–4,000 Chinese characters: safe operating zone.
 - 4,000–6,000: allowed upper zone; record `chunk_chars`.
 - Over 6,000: deterministic paragraph-aware chunking is mandatory; each chunk is processed independently.

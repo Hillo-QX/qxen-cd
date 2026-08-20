@@ -63,6 +63,7 @@ STRICT_LONG_READ_PATTERNS = (
     r"sed\s+-n\s+['\"]?1,[0-9]{3,}p['\"]?\s+\S+",
     r"(?:cat|head\s+-[0-9]+)\s+\S+\.(md|txt|rst)(\s|$)",
 )
+SKILL_INSTRUCTION_RE = re.compile(r"(^|[/\\])SKILL\.md($|[\\s'\"`])")
 STRUCTURED_AUDIT_HINTS = re.compile(
     r"文档.{0,12}(核对|审查|一致)|核对.{0,12}(代码|文档)|"
     r"(DOCX|docx).{0,20}(代码|一致|核对|审查)|"
@@ -139,6 +140,14 @@ def _structured_audit(payload: dict, command: str = "") -> bool:
     return bool(STRUCTURED_AUDIT_HINTS.search("\n".join(values)))
 
 
+def _is_skill_instruction_path(path_str: str) -> bool:
+    return Path(path_str).name == "SKILL.md"
+
+
+def _command_reads_skill_instruction(cmd: str) -> bool:
+    return bool(SKILL_INSTRUCTION_RE.search(cmd))
+
+
 def main() -> int:
     stdin_raw = sys.stdin.read() if not sys.stdin.isatty() else ""
     try:
@@ -172,7 +181,15 @@ def main() -> int:
             info = file_size_info(fpath)
             if info:
                 n_lines, n_chars = info
-                if (not task_is_structured_audit and
+                if _is_skill_instruction_path(fpath):
+                    parts.append(
+                        "[force-distill] Skill 指令文件例外：SKILL.md 必须由主 Agent "
+                        "按 Codex 规则完整读取；不使用 QXEN longtext 替代原文。"
+                        "QXEN 只可在事后生成交接/摘要胶囊。"
+                    )
+                    log_entry["action"] = "skill_instruction_verbatim_allow"
+                    log_entry["path"] = fpath
+                elif (not task_is_structured_audit and
                         (n_lines == -1 or n_lines > READ_LINE_LIMIT or
                          n_chars > READ_CHAR_LIMIT)):
                     parts.append(
@@ -191,7 +208,16 @@ def main() -> int:
         if isinstance(tool_input, dict):
             cmd = str(tool_input.get("command") or tool_input.get("pattern") or "")
         task_is_structured_audit = _structured_audit(payload, cmd)
-        if cmd and STRICT_MODE and tool in ("Bash", "bash") and not _is_safe_run(cmd):
+        skill_instruction_read = cmd and _command_reads_skill_instruction(cmd)
+        if skill_instruction_read:
+            parts.append(
+                "[force-distill] Skill 指令文件例外：命令读取 SKILL.md 时，默认按 "
+                "Codex skill 规则完整读取，不要求 qxen_cd_longtext_distill；"
+                "若需要复用，可在事后对已读结论生成短交接胶囊。"
+            )
+            log_entry["action"] = "skill_instruction_verbatim_allow"
+            log_entry["command"] = cmd[:120]
+        elif cmd and STRICT_MODE and tool in ("Bash", "bash") and not _is_safe_run(cmd):
             updated_command = f"{ROOT}/scripts/safe_run.sh -- bash -lc {shlex.quote(cmd)}"
             parts.append(
                 "[force-distill] Bash 已自动重写为 safe_run；原始输出先落盘并按 "

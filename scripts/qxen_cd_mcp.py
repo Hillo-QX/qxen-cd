@@ -810,6 +810,12 @@ def split_longtext_chunks(text: str, max_chars: int = 6000) -> list[str]:
     return [text[start:start + max_chars] for start in range(0, len(text), max_chars)]
 
 
+def _is_skill_instruction_source(path: Path, source: str = "") -> bool:
+    """Codex skill instruction files must be consumed verbatim by the host."""
+    name = path.name or Path(str(source).split("#", 1)[0]).name
+    return name == "SKILL.md"
+
+
 @mcp.tool()
 async def qxen_cd_longtext_distill(source: str, evidence: str = "",
                                     source_path: str = "",
@@ -848,6 +854,68 @@ async def qxen_cd_longtext_distill(source: str, evidence: str = "",
     resolved_source = Path(source_path or source.split("#", 1)[0]).expanduser()
     input_mode = "inline"
     source_locator: dict[str, Any] = {}
+    if source_path and _is_skill_instruction_source(resolved_source, source):
+        source_locator = {}
+        source_chars = 0
+        try:
+            raw_bytes = resolved_source.read_bytes()
+            text, extraction = extract_source_text(resolved_source)
+            source_chars = len(text)
+            source_locator = {
+                "path": str(resolved_source.resolve()),
+                "sha256": hashlib.sha256(raw_bytes).hexdigest(),
+                "bytes": len(raw_bytes),
+                "content_chars": source_chars,
+                "extraction": extraction,
+            }
+        except Exception:
+            source_locator = {"path": str(resolved_source)}
+        result = {
+            "runtime": "QXEN-CD",
+            "task": "qxen_longtext_distill",
+            "status": "BYPASS_QXEN",
+            "guard_status": "BYPASS",
+            "bypass_reason": "skill_instruction_requires_verbatim_read",
+            "authority": "advisory_only",
+            "accepted_capsule_count": 0,
+            "requires_gpt_review": False,
+            "review_policy": "conditional",
+            "context_burden": {
+                "baseline_chars": source_chars,
+                "final_gpt_chars": source_chars,
+                "ratio": 1.0,
+                "saved_chars": 0,
+                "decision": "BYPASS_QXEN",
+                "metric": "skill_instruction_verbatim_required",
+            },
+            "gpt_context_payload": None,
+            "raw_pointer": source_locator.get("path"),
+            "source_locator": {
+                key: source_locator.get(key)
+                for key in ("path", "sha256", "content_chars")
+                if source_locator.get(key)
+            },
+            "consumption_policy": {
+                "mode": "verbatim_skill_instruction",
+                "reason": "Codex skill rules require the main agent to read SKILL.md completely; QXEN may only create post-hoc handoff capsules.",
+            },
+        }
+        _audit("qxen_cd_longtext_distill", "BYPASS",
+               reason="skill_instruction_requires_verbatim_read",
+               source=str(resolved_source), source_chars=source_chars,
+               model_called=False)
+        if source_locator.get("path") and source_locator.get("sha256"):
+            record_path_distill(
+                source_locator["path"], source_locator["sha256"],
+                source_chars=source_chars,
+                returned_chars=source_chars,
+                context_burden_ratio=1.0,
+                decision="BYPASS_QXEN",
+                accepted_capsules=0,
+                work_item_id=work_item_id, task_id=task_id,
+                capsule_id="", workspace=workspace, session_id=session_id,
+                path=AUDIT_LOG)
+        return finish(result)
     if not evidence:
         if not resolved_source.is_file():
             return finish({

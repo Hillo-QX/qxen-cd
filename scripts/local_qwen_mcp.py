@@ -85,6 +85,12 @@ LOCAL_QWEN_AUDIT_CLASSES = {
     "local_failure_cluster": "failure_clustering",
     "local_monitor_analyze": "monitor_assist",
 }
+CONTEXT_SAVING_ELIGIBLE_CLASSES = {
+    "context_distillation",
+    "failure_analysis",
+    "context_selection",
+    "research_assist",
+}
 
 # qxen_cd_mcp temporarily overrides this for its audit-only delegation paths.
 _AUDIT_CONTEXT = {"usage_class": "direct_local_assist", "origin": "local-qwen",
@@ -124,14 +130,16 @@ def audit_context(*, usage_class: str, origin: str = "local-qwen",
 
 
 def _audit_fields(tool: str) -> dict:
+    audit_class = LOCAL_QWEN_AUDIT_CLASSES.get(tool, "other")
     return {
-        "audit_class": LOCAL_QWEN_AUDIT_CLASSES.get(tool, "other"),
+        "audit_class": audit_class,
         "usage_class": _AUDIT_CONTEXT.get("usage_class", "direct_local_assist"),
         "origin": _AUDIT_CONTEXT.get("origin", "local-qwen"),
         "work_item_id": _AUDIT_CONTEXT.get("work_item_id", ""),
         "session_id": _AUDIT_CONTEXT.get("session_id", ""),
         "local_tokens_estimated": True,
         "count_as_gpt_saving": False,
+        "context_saving_eligible": audit_class in CONTEXT_SAVING_ELIGIBLE_CLASSES,
     }
 
 

@@ -368,6 +368,19 @@ def summarize_local_qwen(rows: list[dict[str, Any]], workspace: str = "",
     path_rows = [r for r in terminal if r.get("input_mode") == "local_path"]
     path_input = sum(int(r.get("input_chars") or 0) for r in path_rows)
     path_output = sum(int(r.get("output_chars") or 0) for r in path_rows)
+    context_saving_rows = [
+        r for r in terminal
+        if r.get("context_saving_eligible") is True
+        or str(r.get("audit_class") or "") in {
+            "context_distillation", "failure_analysis", "context_selection", "research_assist"
+        }
+    ]
+    generation_rows = [
+        r for r in terminal
+        if str(r.get("audit_class") or "") in {
+            "candidate_generation", "expression_review", "failure_clustering", "monitor_assist"
+        }
+    ]
     return {
         "schema_version": "local_qwen_audit_v1",
         "invocation_rows": len(terminal),
@@ -382,6 +395,12 @@ def summarize_local_qwen(rows: list[dict[str, Any]], workspace: str = "",
         "output_chars": total_output,
         "local_tokens_est": total_tokens,
         "counted_as_gpt_saving": False,
+        "context_saving_eligible_calls": len(context_saving_rows),
+        "context_saving_eligible_input_chars": sum(int(r.get("input_chars") or 0) for r in context_saving_rows),
+        "context_saving_eligible_output_chars": sum(int(r.get("output_chars") or 0) for r in context_saving_rows),
+        "local_generation_or_review_calls": len(generation_rows),
+        "local_generation_or_review_input_chars": sum(int(r.get("input_chars") or 0) for r in generation_rows),
+        "local_generation_or_review_output_chars": sum(int(r.get("output_chars") or 0) for r in generation_rows),
         "audit_only_calls": sum(r.get("usage_class") == "audit_only" for r in terminal),
         "business_assist_calls": sum(r.get("usage_class") not in {"audit_only", "health_probe"}
                                       for r in terminal),
@@ -395,7 +414,7 @@ def summarize_local_qwen(rows: list[dict[str, Any]], workspace: str = "",
         },
         "by_tool": by_tool,
         "by_usage_class": by_class,
-        "note": "字符/4估算；LocalQwen成本单列，不冒充GPT节省，health缓存命中仍记调用但不记Ollama生成成本。",
+        "note": "字符/4估算；LocalQwen成本单列，不冒充GPT节省。candidate_generation/expression_review/failure_clustering 属于本地生成/复核，不计入上下文节省；health缓存命中仍记调用但不记Ollama生成成本。",
     }
 
 

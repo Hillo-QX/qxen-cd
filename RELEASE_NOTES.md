@@ -20,6 +20,14 @@ authorization policy, domain validation, host hooks, and final-agent review.
   before model dispatch. This avoids spending local inference on short tail
   chunks whose serialized candidate payload is empirically larger than the raw
   text, while keeping larger chunks on the existing QXEN/compact path.
+- Codex `SKILL.md` instruction files now bypass QXEN long-text replacement by
+  default (`skill_instruction_requires_verbatim_read`), because the host agent
+  must read skill instructions verbatim. QXEN may still produce post-hoc handoff
+  capsules from already-consumed conclusions.
+- LocalQwen audit rows now distinguish context-saving distillation from local
+  generation/review tools such as factor candidate generation, expression
+  review, and failure clustering; generation/review output is not counted as
+  context savings.
 - Default long-text responses expose only minimal `gpt_context_payload`, burden
   metrics, source pointer/hash, and chunk summary; full `compact_state`, raw
   model output, and preflight/debug metadata are opt-in debug data.

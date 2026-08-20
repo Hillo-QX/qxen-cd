@@ -109,6 +109,24 @@ async def call_with_tail_chunk(tail_chars: int) -> tuple[dict, int]:
         qxen._qxen_generate = original
 
 
+async def call_skill_bypass() -> tuple[dict, int]:
+    original = qxen._qxen_generate
+    calls = {"n": 0}
+
+    async def fake_generate(**kwargs):
+        calls["n"] += 1
+        return {"guard_status": "ADVISORY", "gpt_context": {"capsule": {"summary": ["should not run"]}}}
+
+    qxen._qxen_generate = fake_generate
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "SKILL.md"
+            path.write_text("# Demo skill\n" + ("x" * 3000), encoding="utf-8")
+            return await qxen.qxen_cd_longtext_distill(source=path.name, source_path=str(path)), calls["n"]
+    finally:
+        qxen._qxen_generate = original
+
+
 def main() -> int:
     long_source = "甲公司收入同比增长，现金流改善，订单恢复。" * 350
     injected = asyncio.run(call_with_summary("收入增长、现金流改善、订单恢复。", long_source))
@@ -160,6 +178,14 @@ def main() -> int:
     assert calls == 2
     assert qxen_flow["passthrough_chars"] == 0
     assert qxen_flow["passthrough_chunks"] == []
+
+    skill_bypass, calls = asyncio.run(call_skill_bypass())
+    assert calls == 0
+    assert skill_bypass["status"] == "BYPASS_QXEN"
+    assert skill_bypass["guard_status"] == "BYPASS"
+    assert skill_bypass["bypass_reason"] == "skill_instruction_requires_verbatim_read"
+    assert skill_bypass["context_burden"]["ratio"] == 1.0
+    assert skill_bypass["gpt_context_payload"] is None
 
     compacted = asyncio.run(qxen.qxen_cd_compact(records=[bypassed], task_id="bypass-test"))
     assert compacted["accepted_capsules"] == []

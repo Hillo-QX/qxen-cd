@@ -30,10 +30,11 @@ def main() -> int:
         tool_name="Bash",
         tool_input={"command": "sed -n '1,240p' /tmp/SKILL.md"},
     )
-    denied = run("force_distill.py", long_read, allowed_returncodes=(2,))
-    denied_output = denied["hookSpecificOutput"]
-    assert denied_output["permissionDecision"] == "deny"
-    assert "qxen_cd_longtext_distill" in denied_output["permissionDecisionReason"]
+    skill_allowed = run("force_distill.py", long_read)
+    skill_output = skill_allowed["hookSpecificOutput"]
+    assert "permissionDecision" not in skill_output
+    assert "SKILL.md" in skill_output["additionalContext"]
+    assert "不要求 qxen_cd_longtext_distill" in skill_output["additionalContext"]
     with tempfile.TemporaryDirectory() as tmp:
         attachment = Path(tmp) / ".codex" / "attachments" / "pasted-text.txt"
         attachment.parent.mkdir(parents=True)
@@ -44,6 +45,14 @@ def main() -> int:
         targeted = dict(base, user_prompt=f"只读取 {attachment} 第 10 行")
         targeted_context = __import__("session_bootstrap_hook").attachment_distill_context(targeted)
         assert "允许确定性局部回源" in targeted_context
+        skill_attachment = Path(tmp) / ".codex" / "attachments" / "SKILL.md"
+        skill_attachment.write_text("x" * 3000, encoding="utf-8")
+        skill_context = __import__("session_bootstrap_hook").attachment_distill_context(
+            dict(base, user_prompt=f"请使用 {skill_attachment}")
+        )
+        assert "SKILL.md 指令文件" in skill_context
+        assert "不使用 QXEN longtext 替代原文" in skill_context
+        assert "必须先调用 qxen_cd_longtext_distill" not in skill_context
     structured = dict(
         base,
         user_prompt="核对 DOCX 文档描述是否与代码一致",
