@@ -13,8 +13,13 @@ authorization policy, domain validation, host hooks, and final-agent review.
 - Long-text processing uses an advisory capsule path with lightweight
   validation; `key_evidence` is optional for this path.
 - Long-text injection now uses a hard Context Burden gate:
-  `final_gpt_payload_chars / direct_source_chars < 1` and at least one accepted
-  capsule are required before QXEN output is injected into the main agent.
+  `final_gpt_payload_chars / direct_source_chars < 1` plus at least one accepted
+  capsule or `RAW_PASSTHROUGH` chunk are required before QXEN output is injected
+  into the main agent.
+- Long-text chunks with `raw_chunk_chars <= 220` now use `RAW_PASSTHROUGH`
+  before model dispatch. This avoids spending local inference on short tail
+  chunks whose serialized candidate payload is empirically larger than the raw
+  text, while keeping larger chunks on the existing QXEN/compact path.
 - Default long-text responses expose only minimal `gpt_context_payload`, burden
   metrics, source pointer/hash, and chunk summary; full `compact_state`, raw
   model output, and preflight/debug metadata are opt-in debug data.

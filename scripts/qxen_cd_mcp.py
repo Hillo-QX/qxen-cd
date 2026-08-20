@@ -66,6 +66,18 @@ DETECTION_TASKS_PATH = ROOT / "configs" / "qxen_detection_tasks_v1.json"
 MCP_LOG = Path(os.environ.get("QXEN_CD_MCP_LOG", str(ROOT / "日志" / "qxen_cd_mcp.log")))
 SERVER_VERSION = "qxen-cd-mcp-v1"
 mcp = FastMCP("qxen-cd")
+QXEN_LONGTEXT_RAW_PASSTHROUGH_MAX_CHARS = 220
+QXEN_LONGTEXT_RAW_PASSTHROUGH_CALIBRATION = {
+    "basis": "empirical_context_burden_break_even",
+    "points": [
+        {"raw_chars": 98, "candidate_chars": 205, "reason": "chunk_context_burden_not_reduced"},
+        {"raw_chars": 6000, "candidate_chars": 1042, "reason": "accepted_long_chunk"},
+    ],
+    "fit": "candidate_chars = a + b * raw_chars",
+    "estimated_break_even_chars": 222.68,
+    "configured_threshold_chars": QXEN_LONGTEXT_RAW_PASSTHROUGH_MAX_CHARS,
+    "policy": "raw_chunk_chars <= configured_threshold_chars bypasses QXEN dispatch",
+}
 
 
 def _now() -> str:
@@ -933,9 +945,17 @@ async def qxen_cd_longtext_distill(source: str, evidence: str = "",
         the caller must keep/read the source instead of injecting QXEN output.
         """
         limit = max(2000, min(int(compact_max_chars), 100000))
+        passthrough_records = [
+            record for record in records
+            if record.get("status") == "RAW_PASSTHROUGH" or record.get("raw_passthrough")
+        ]
+        model_records = [
+            record for record in records
+            if record.get("status") != "RAW_PASSTHROUGH" and not record.get("raw_passthrough")
+        ]
         accepted_records = []
         dropped_chunks = []
-        for record in records:
+        for record in model_records:
             raw_chars = int(record.get("raw_chunk_chars") or record.get("source_chars") or 0)
             context = record.get("gpt_context") or {}
             capsule = context.get("capsule") if isinstance(context, dict) else None
@@ -944,6 +964,11 @@ async def qxen_cd_longtext_distill(source: str, evidence: str = "",
                 if isinstance(capsule, dict) else 0
             )
             if raw_chars and candidate_chars > raw_chars:
+                _audit("qxen_cd_longtext_chunk_decision", "DROP",
+                       source=metadata.get("source") or (metadata.get("source_locator") or {}).get("path"),
+                       chunk=record.get("raw_chunk_index"), raw_chars=raw_chars,
+                       candidate_chars=candidate_chars,
+                       reason="chunk_context_burden_not_reduced")
                 dropped_chunks.append({
                     "chunk": record.get("raw_chunk_index"),
                     "raw_chars": raw_chars,
@@ -983,6 +1008,7 @@ async def qxen_cd_longtext_distill(source: str, evidence: str = "",
             "source_locator", "provenance", "advisory_only", "review_policy",
         }
         context_capsules = []
+        distilled_chars = 0
         for capsule in accepted:
             slim = {key: value for key, value in capsule.items() if key in allowed}
             # Keep one canonical pointer at the payload level; duplicating path,
@@ -990,7 +1016,29 @@ async def qxen_cd_longtext_distill(source: str, evidence: str = "",
             # additional default-context value.
             slim.pop("source_locator", None)
             slim.pop("raw_pointer", None)
+            distilled_chars += len(json.dumps(slim, ensure_ascii=False, separators=(",", ":")))
             context_capsules.append(slim)
+        raw_passthrough_chunks = []
+        passthrough_chars = 0
+        passthrough_decisions = []
+        for record in passthrough_records:
+            raw_text = str(record.get("raw_text") or "")
+            raw_chars = int(record.get("raw_chunk_chars") or len(raw_text))
+            passthrough_chars += raw_chars
+            decision = {
+                "chunk": record.get("raw_chunk_index"),
+                "raw_chars": raw_chars,
+                "decision": "RAW_PASSTHROUGH",
+                "reason": record.get("reason") or "raw_chunk_below_break_even_threshold",
+            }
+            passthrough_decisions.append(decision)
+            raw_passthrough_chunks.append({
+                "chunk": record.get("raw_chunk_index"),
+                "text": raw_text,
+                "raw_chars": raw_chars,
+                "source": record.get("source") or metadata.get("source"),
+                "provenance": "raw_passthrough",
+            })
         chunking_raw = metadata.get("chunking") or {}
         chunking_summary = {
             key: value for key, value in chunking_raw.items()
@@ -1009,9 +1057,17 @@ async def qxen_cd_longtext_distill(source: str, evidence: str = "",
             "authority": "advisory_only",
             "review_policy": "conditional",
         }
+        if raw_passthrough_chunks:
+            context_payload["raw_passthrough_chunks"] = raw_passthrough_chunks
         context_chars = len(json.dumps(context_payload, ensure_ascii=False, separators=(",", ":")))
         ratio = (context_chars / baseline_chars) if baseline_chars else 1.0
-        inject = bool(accepted) and ratio < 1.0
+        inject = bool(accepted or raw_passthrough_chunks) and ratio < 1.0
+        covered_raw_chars = (
+            sum(int(record.get("raw_chunk_chars") or record.get("source_chars") or 0) for record in accepted_records)
+            + passthrough_chars
+        )
+        source_coverage_ratio = round(min(1.0, covered_raw_chars / baseline_chars), 6) if baseline_chars else 0.0
+        payload_overhead_chars = max(0, context_chars - distilled_chars - passthrough_chars)
 
         burden = {
             "baseline_chars": baseline_chars,
@@ -1020,6 +1076,12 @@ async def qxen_cd_longtext_distill(source: str, evidence: str = "",
             "saved_chars": max(0, baseline_chars - context_chars) if inject else 0,
             "decision": "INJECT_QXEN" if inject else "BYPASS_QXEN",
             "metric": "final_gpt_payload_chars / direct_source_chars",
+            "distilled_chars": distilled_chars,
+            "passthrough_chars": passthrough_chars,
+            "payload_overhead_chars": payload_overhead_chars if inject else 0,
+            "raw_passthrough_max_chars": QXEN_LONGTEXT_RAW_PASSTHROUGH_MAX_CHARS,
+            "raw_passthrough_threshold_basis": QXEN_LONGTEXT_RAW_PASSTHROUGH_CALIBRATION,
+            "source_coverage_ratio": source_coverage_ratio if inject else 0.0,
         }
         if not inject:
             payload = {
@@ -1034,6 +1096,9 @@ async def qxen_cd_longtext_distill(source: str, evidence: str = "",
                 "review_policy": "conditional",
                 "context_burden": burden,
                 "gpt_context_payload": None,
+                "raw_passthrough_max_chars": QXEN_LONGTEXT_RAW_PASSTHROUGH_MAX_CHARS,
+                "passthrough_chars": passthrough_chars,
+                "passthrough_chunks": passthrough_decisions,
                 "raw_pointer": metadata.get("raw_pointer") or source_locator.get("path"),
                 "source_locator": {
                     key: source_locator.get(key)
@@ -1067,6 +1132,11 @@ async def qxen_cd_longtext_distill(source: str, evidence: str = "",
             "compact_max_chars": limit,
             "context_burden": burden,
             "gpt_context_payload": context_payload,
+            "raw_passthrough_max_chars": QXEN_LONGTEXT_RAW_PASSTHROUGH_MAX_CHARS,
+            "passthrough_chars": passthrough_chars,
+            "passthrough_chunks": passthrough_decisions,
+            "distilled_chars": distilled_chars,
+            "source_coverage_ratio": source_coverage_ratio,
             "raw_pointer": metadata.get("raw_pointer") or source_locator.get("path"),
             "source_locator": {
                 key: source_locator.get(key)
@@ -1129,7 +1199,48 @@ async def qxen_cd_longtext_distill(source: str, evidence: str = "",
             pdf_preflight = {"status": "WARNING", "warnings": [f"pdf_preflight_error:{str(exc)[:160]}"]}
 
     if len(evidence) <= max_chars:
+        if len(evidence) <= QXEN_LONGTEXT_RAW_PASSTHROUGH_MAX_CHARS:
+            _audit("qxen_cd_longtext_chunk_decision", "RAW_PASSTHROUGH",
+                   source=source, chunk=1, raw_chars=len(evidence),
+                   raw_passthrough_max_chars=QXEN_LONGTEXT_RAW_PASSTHROUGH_MAX_CHARS,
+                   reason="raw_chunk_below_break_even_threshold")
+            passthrough = attach_source_contract({
+                "runtime": "QXEN-CD",
+                "task": "qxen_longtext_distill",
+                "status": "RAW_PASSTHROUGH",
+                "guard_status": "BYPASS",
+                "requires_gpt_review": False,
+                "review_policy": "conditional",
+                "authority": "advisory_only",
+                "raw_passthrough": True,
+                "reason": "raw_chunk_below_break_even_threshold",
+                "raw_text": evidence,
+                "raw_chunk_chars": len(evidence),
+                "raw_chunk_index": 1,
+                "raw_chunk_count": 1,
+                "source_chars": len(evidence),
+            })
+            payload = compact_consumption_payload(
+                [passthrough],
+                {
+                    "chunking": {"mode": "single", "chunk_chars": len(evidence), "chunks": 1},
+                    "source": source,
+                    "source_chars": len(evidence),
+                    "pdf_preflight": pdf_preflight,
+                    "input_mode": input_mode,
+                    "source_span": passthrough.get("source_span", "full_source"),
+                    "consumption_policy": consumption_policy,
+                    "raw_pointer": passthrough.get("raw_pointer"),
+                    "source_locator": passthrough.get("source_locator"),
+                },
+            )
+            record_observable_path(payload)
+            return finish(payload)
         context = preflight(evidence)
+        _audit("qxen_cd_longtext_chunk_decision", "DISTILL",
+               source=source, chunk=1, raw_chars=len(evidence),
+               raw_passthrough_max_chars=QXEN_LONGTEXT_RAW_PASSTHROUGH_MAX_CHARS,
+               reason="raw_chunk_above_passthrough_threshold")
         result = await _qxen_generate(
             source=source,
             evidence=model_evidence(evidence, context),
@@ -1167,6 +1278,34 @@ async def qxen_cd_longtext_distill(source: str, evidence: str = "",
     for index, chunk in enumerate(chunks, 1):
         context = preflight(chunk)
         preflight_summary.append({"chunk": index, **context})
+        if len(chunk) <= QXEN_LONGTEXT_RAW_PASSTHROUGH_MAX_CHARS:
+            _audit("qxen_cd_longtext_chunk_decision", "RAW_PASSTHROUGH",
+                   source=source, chunk=index, raw_chars=len(chunk),
+                   raw_passthrough_max_chars=QXEN_LONGTEXT_RAW_PASSTHROUGH_MAX_CHARS,
+                   reason="raw_chunk_below_break_even_threshold")
+            chunk_result = {
+                "runtime": "QXEN-CD",
+                "task": "qxen_longtext_distill",
+                "status": "RAW_PASSTHROUGH",
+                "guard_status": "BYPASS",
+                "requires_gpt_review": False,
+                "review_policy": "conditional",
+                "authority": "advisory_only",
+                "raw_passthrough": True,
+                "reason": "raw_chunk_below_break_even_threshold",
+                "raw_text": chunk,
+                "raw_chunk_chars": len(chunk),
+                "model_input_chars": 0,
+                "raw_chunk_index": index,
+                "raw_chunk_count": len(chunks),
+                "source_chars": len(chunk),
+            }
+            results.append(attach_source_contract(chunk_result, f"chunk:{index}/{len(chunks)}"))
+            continue
+        _audit("qxen_cd_longtext_chunk_decision", "DISTILL",
+               source=source, chunk=index, raw_chars=len(chunk),
+               raw_passthrough_max_chars=QXEN_LONGTEXT_RAW_PASSTHROUGH_MAX_CHARS,
+               reason="raw_chunk_above_passthrough_threshold")
         chunk_result = await _qxen_generate(
             source=f"{source}#chunk{index:02d}",
             evidence=model_evidence(chunk, context),

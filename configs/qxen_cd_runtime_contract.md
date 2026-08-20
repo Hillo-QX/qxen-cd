@@ -57,9 +57,15 @@ Guard 和 Compactor 为准。长文调用超过工具层时限时，应记录为
 `compact_state`、完整 preflight、raw model output 或调试记录；这些只能在显式
 `include_raw_longtext=true` 时进入 `debug_only`。默认注入口径不是“完整 capsule / 原文”，而是
 `Context Burden Ratio = final_gpt_payload_chars / direct_source_chars`。只有
-`accepted_capsules > 0` 且该 ratio < 1 时返回 `status=INJECT_QXEN`；否则返回
+`accepted_capsules > 0` 或存在 `RAW_PASSTHROUGH` 短块，且该 ratio < 1 时返回
+`status=INJECT_QXEN`；否则返回
 `status=BYPASS_QXEN`、`guard_status=BYPASS`，不注入 QXEN 胶囊，也不把降级指针记入
 `accepted_capsules`。只有需要滚动状态时才显式调用 `qxen_cd_compact`，避免同一摘要重复返回。
+分块后、QXEN dispatch 前必须执行短块直通门禁：`raw_chunk_chars <= 220` 的块不调用模型，
+以 `RAW_PASSTHROUGH` 进入最终 GPT payload 候选；该阈值来自两点经验校准
+`98→205`（无收益）与 `6000→1042`（有收益），线性 break-even 约 `222.68` 字符，生产保守取
+`220`。直通块不计入 `distilled_chars`，必须单独记录 `passthrough_chars`、
+`passthrough_chunks`、`raw_passthrough_max_chars` 和阈值依据。
 
 可观测 token 口径为：MCP 路径读入字符 − 最终进入 GPT 的 payload 字符 − 后续
 `qxen_cd_source_slice` 回源字符。该值由 `observable_path_accounting` 报告；
@@ -113,6 +119,10 @@ GPT 主 Agent 负责最终解释与行动。
 - 2,000–4,000 Chinese characters: safe operating zone.
 - 4,000–6,000: allowed upper zone; record `chunk_chars`.
 - Over 6,000: deterministic paragraph-aware chunking is mandatory; each chunk is processed independently.
+- Raw passthrough gate: after chunking and before QXEN dispatch, chunks with
+  `raw_chunk_chars <= 220` must be marked `RAW_PASSTHROUGH` and must not call QXEN.
+  Chunks above 220 continue through the existing QXEN flow and the existing
+  `candidate_chars >= raw_chars` context-burden rejection rule.
 - Under 2,000: prefer deterministic extraction; LocalQwen is not the general long-text backend.
 - Long-text output is `ADVISORY`, never a final fact or Gate decision.
 - Long-text `summary` may be either a faithful paragraph string (preferred for
@@ -122,9 +132,9 @@ GPT 主 Agent 负责最终解释与行动。
   page suffixes.
 - `key_evidence` is optional for long-text/advisory outputs; its absence must not produce `key_evidence_missing_or_invalid` or a hard fallback.
 - Guard mode is task-scoped: long-text uses `lightweight_json`; high-risk evidence uses `full_deterministic`.
-- Required audit fields: `pipeline=longtext_distill`, `chunk_count`, `chunk_chars`, `authority=advisory_only`, `requires_gpt_review=false`, `review_policy=conditional`, and `context_burden.ratio`.
+- Required audit fields: `pipeline=longtext_distill`, `chunk_count`, `chunk_chars`, `authority=advisory_only`, `requires_gpt_review=false`, `review_policy=conditional`, `context_burden.ratio`, `distilled_chars`, `passthrough_chars`, `payload_overhead_chars`, `raw_passthrough_max_chars`, and chunk decisions for `RAW_PASSTHROUGH`/dropped chunks.
 - Required source contract: default payload keeps `raw_pointer` and `source_locator.sha256`; full `consumption_policy.mode=capsule_first_targeted_retrieval` is contract-level/debug metadata, not repeated in every default GPT payload. Capsules are task-scoped functional summaries, never source-equivalent replacements; exact values/quotes, code edits, conflicts, missing evidence, and high-risk decisions require targeted source retrieval.
-- Injection gate: `accepted_capsules > 0` and `final_gpt_payload_chars / direct_source_chars < 1`; otherwise return `BYPASS_QXEN` and do not retry the same capsule as a model failure.
+- Injection gate: (`accepted_capsules > 0` or `RAW_PASSTHROUGH` chunks exist) and `final_gpt_payload_chars / direct_source_chars < 1`; otherwise return `BYPASS_QXEN` and do not retry the same capsule as a model failure.
 - Targeted source retrieval uses deterministic `qxen_cd_source_slice` with either a line range or query plus optional SHA-256 verification; it returns only a bounded verbatim excerpt and never loads a model.
 - `qxen_cd_source_slice` uses the same file-type extraction contract as longtext for all supported structured formats; it must not decode OOXML or legacy `.xls` binaries as UTF-8.
 - PDF/table/numeric preflight is local/default-hidden evidence. It may be returned only as compact debug metadata or when the task explicitly asks for table/numeric QA; full coordinate rows remain local evidence only.
